@@ -504,6 +504,201 @@ describe('Viessmannapi axios error logging', () => {
 });
 
 
+describe('Viessmannapi command payload validation', () => {
+  afterEach(() => {
+    delete require.cache[require.resolve('./main')];
+  });
+
+  function setupCommandTest(commonConfig) {
+    const adapter = createAdapter();
+    const calls = [];
+    const warns = [];
+
+    adapter.session = { access_token: 'access-token' };
+    adapter.log.warn = (msg) => warns.push(String(msg));
+    adapter.getStateAsync = async () => ({ val: 'https://example.com/command' });
+    adapter.getObjectAsync = async () => ({ common: commonConfig });
+    adapter.updateDevices = async () => {};
+    adapter.requestClient.defaults.adapter = async (config) => {
+      calls.push(config);
+      return { config, data: { ok: true }, headers: {}, status: 200, statusText: 'OK' };
+    };
+
+    return { adapter, calls, warns };
+  }
+
+  it('sends a valid single-parameter command', async () => {
+    const { adapter, calls, warns } = setupCommandTest({
+      param: 'temperature',
+      type: 'number',
+      min: 10,
+      max: 30,
+    });
+
+    await adapter.onStateChange('viessmannapi.0.device.feature.setValue', { ack: false, val: '21' });
+
+    expect(warns).to.have.length(0);
+    expect(calls).to.have.length(1);
+    expect(calls[0].data).to.equal(JSON.stringify({ temperature: 21 }));
+  });
+
+  it('sends a valid multi-parameter JSON command', async () => {
+    const { adapter, calls, warns } = setupCommandTest({
+      param: [
+        { param: 'slope', type: 'number', min: 0.2, max: 3.5 },
+        { param: 'shift', type: 'number', min: -13, max: 40 },
+      ],
+      type: 'object',
+    });
+
+    await adapter.onStateChange('viessmannapi.0.device.feature.setValue', {
+      ack: false,
+      val: '{"slope": 1.5, "shift": 5}',
+    });
+
+    expect(warns).to.have.length(0);
+    expect(calls).to.have.length(1);
+    expect(calls[0].data).to.equal(JSON.stringify({ slope: 1.5, shift: 5 }));
+  });
+
+  it('rejects invalid JSON for multi-parameter commands', async () => {
+    const { adapter, calls, warns } = setupCommandTest({
+      param: [
+        { param: 'slope', type: 'number' },
+        { param: 'shift', type: 'number' },
+      ],
+      type: 'object',
+    });
+
+    await adapter.onStateChange('viessmannapi.0.device.feature.setValue', {
+      ack: false,
+      val: '{not valid json}',
+    });
+
+    expect(calls).to.have.length(0);
+    expect(warns).to.have.length(1);
+    expect(warns[0]).to.include('Command rejected');
+    expect(warns[0]).to.include('Invalid JSON');
+  });
+
+  it('rejects enum violations for single-parameter commands', async () => {
+    const { adapter, calls, warns } = setupCommandTest({
+      param: 'mode',
+      type: 'mixed',
+      states: { eco: 'eco', comfort: 'comfort' },
+    });
+
+    await adapter.onStateChange('viessmannapi.0.device.feature.setValue', {
+      ack: false,
+      val: 'turbo',
+    });
+
+    expect(calls).to.have.length(0);
+    expect(warns).to.have.length(1);
+    expect(warns[0]).to.include('turbo');
+    expect(warns[0]).to.include('eco');
+    expect(warns[0]).to.include('comfort');
+  });
+
+  it('rejects enum violations for multi-parameter commands', async () => {
+    const { adapter, calls, warns } = setupCommandTest({
+      param: [
+        { param: 'mode', type: 'mixed', states: { eco: 'eco', comfort: 'comfort' } },
+        { param: 'temperature', type: 'number', min: 10, max: 30 },
+      ],
+      type: 'object',
+    });
+
+    await adapter.onStateChange('viessmannapi.0.device.feature.setValue', {
+      ack: false,
+      val: '{"mode": "turbo", "temperature": 21}',
+    });
+
+    expect(calls).to.have.length(0);
+    expect(warns).to.have.length(1);
+    expect(warns[0]).to.include('turbo');
+    expect(warns[0]).to.include('eco');
+  });
+
+  it('rejects values below numeric minimum', async () => {
+    const { adapter, calls, warns } = setupCommandTest({
+      param: 'temperature',
+      type: 'number',
+      min: 10,
+      max: 30,
+    });
+
+    await adapter.onStateChange('viessmannapi.0.device.feature.setValue', {
+      ack: false,
+      val: '5',
+    });
+
+    expect(calls).to.have.length(0);
+    expect(warns).to.have.length(1);
+    expect(warns[0]).to.include('below minimum');
+    expect(warns[0]).to.include('10');
+  });
+
+  it('rejects values above numeric maximum', async () => {
+    const { adapter, calls, warns } = setupCommandTest({
+      param: 'temperature',
+      type: 'number',
+      min: 10,
+      max: 30,
+    });
+
+    await adapter.onStateChange('viessmannapi.0.device.feature.setValue', {
+      ack: false,
+      val: '35',
+    });
+
+    expect(calls).to.have.length(0);
+    expect(warns).to.have.length(1);
+    expect(warns[0]).to.include('exceeds maximum');
+    expect(warns[0]).to.include('30');
+  });
+
+  it('rejects multi-parameter commands with missing required parameters', async () => {
+    const { adapter, calls, warns } = setupCommandTest({
+      param: [
+        { param: 'slope', type: 'number', min: 0.2, max: 3.5 },
+        { param: 'shift', type: 'number', min: -13, max: 40 },
+      ],
+      type: 'object',
+    });
+
+    await adapter.onStateChange('viessmannapi.0.device.feature.setValue', {
+      ack: false,
+      val: '{"slope": 1.5}',
+    });
+
+    expect(calls).to.have.length(0);
+    expect(warns).to.have.length(1);
+    expect(warns[0]).to.include('Missing required parameter');
+    expect(warns[0]).to.include('shift');
+  });
+
+  it('rejects multi-parameter commands with min/max violations', async () => {
+    const { adapter, calls, warns } = setupCommandTest({
+      param: [
+        { param: 'slope', type: 'number', min: 0.2, max: 3.5 },
+        { param: 'shift', type: 'number', min: -13, max: 40 },
+      ],
+      type: 'object',
+    });
+
+    await adapter.onStateChange('viessmannapi.0.device.feature.setValue', {
+      ack: false,
+      val: '{"slope": 5.0, "shift": -20}',
+    });
+
+    expect(calls).to.have.length(0);
+    expect(warns).to.have.length(1);
+    expect(warns[0]).to.include('exceeds maximum');
+    expect(warns[0]).to.include('below minimum');
+  });
+});
+
 describe('extractKeys', () => {
   it('extracts nested objects after the returned promise resolves', async () => {
     const adapter = createExtractKeysAdapterMock();

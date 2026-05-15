@@ -707,6 +707,117 @@ class Viessmannapi extends utils.Adapter {
     }
   }
 
+  validateCommandPayload(common, stateVal) {
+    if (!common) {
+      return { valid: true, data: {} };
+    }
+
+    const param = common.param;
+    if (!param) {
+      return { valid: true, data: {} };
+    }
+
+    if (!Array.isArray(param)) {
+      let value = stateVal;
+      if (value !== '' && value !== null && !isNaN(value)) {
+        value = Number(value);
+      }
+
+      if (common.states) {
+        const allowed = Object.keys(common.states);
+        if (!allowed.includes(String(value))) {
+          return {
+            valid: false,
+            reason: 'Value "' + value + '" is not allowed for "' + param + '". Valid values: ' + allowed.join(', '),
+          };
+        }
+      }
+
+      if (typeof value === 'number') {
+        if (common.min != null && value < common.min) {
+          return {
+            valid: false,
+            reason: 'Value ' + value + ' for "' + param + '" is below minimum ' + common.min,
+          };
+        }
+        if (common.max != null && value > common.max) {
+          return {
+            valid: false,
+            reason: 'Value ' + value + ' for "' + param + '" exceeds maximum ' + common.max,
+          };
+        }
+      }
+
+      return { valid: true, data: { [param]: value } };
+    }
+
+    let parsed;
+    try {
+      parsed = JSON.parse(stateVal);
+    } catch (e) {
+      const example = {};
+      for (const p of param) {
+        example[p.param] = '<' + p.type + '>';
+      }
+      return {
+        valid: false,
+        reason: 'Invalid JSON: ' + e.message + '. Expected format: ' + JSON.stringify(example),
+      };
+    }
+
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      return { valid: false, reason: 'Value must be a JSON object' };
+    }
+
+    const data = {};
+    const errors = [];
+
+    for (const entry of param) {
+      if (typeof parsed[entry.param] === 'undefined') {
+        errors.push('Missing required parameter "' + entry.param + '"');
+        continue;
+      }
+
+      let value = parsed[entry.param];
+      if (value !== '' && value !== null && !isNaN(value)) {
+        value = Number(value);
+      }
+
+      if (entry.states) {
+        const allowed = Object.keys(entry.states);
+        if (!allowed.includes(String(value))) {
+          errors.push(
+            'Parameter "' + entry.param + '": value "' + value + '" is not allowed. Valid values: ' + allowed.join(', '),
+          );
+          continue;
+        }
+      }
+
+      if (entry.type === 'number') {
+        if (typeof value !== 'number' || !Number.isFinite(value)) {
+          errors.push('Parameter "' + entry.param + '": expected a number');
+          continue;
+        }
+        if (entry.min != null && value < entry.min) {
+          errors.push('Parameter "' + entry.param + '": value ' + value + ' is below minimum ' + entry.min);
+          continue;
+        }
+        if (entry.max != null && value > entry.max) {
+          errors.push('Parameter "' + entry.param + '": value ' + value + ' exceeds maximum ' + entry.max);
+          continue;
+        }
+      }
+
+      data[entry.param] = value;
+    }
+
+    if (errors.length > 0) {
+      return { valid: false, reason: errors.join('; ') };
+    }
+
+    return { valid: true, data };
+  }
+
   /**
    * Is called if a subscribed state changes
    * @param {string} id
@@ -725,38 +836,18 @@ class Viessmannapi extends utils.Adapter {
         const uriState = await this.getStateAsync(parentPath + '.uri');
         const idState = await this.getObjectAsync(parentPath + '.setValue');
 
-        const data = {};
-
-        const param = idState.common.param;
-        if (param) {
-          if (typeof param !== 'object' || !Array.isArray(param)) {
-            data[param] = state.val;
-            if (!isNaN(state.val)) {
-              data[param] = Number(state.val);
-            }
-          } else {
-            try {
-              const stateval = JSON.parse(state.val);
-              for (const entry of param) {
-                if (typeof stateval[entry.param] !== 'undefined') {
-                  data[entry.param] = stateval[entry.param];
-                  if (!isNaN(data[entry.param])) {
-                    data[entry.param] = Number(data[entry.param]);
-                  }
-                }
-              }
-            } catch (error) {
-              this.log.error(stringifyForLog(error));
-              this.log.info(`Please use a valid JSON: {"slope": x, "shift": y}`);
-            }
-          }
-        }
-
         if (!uriState || !uriState.val) {
           this.log.info('No URI found');
           return;
         }
 
+        const result = this.validateCommandPayload(idState && idState.common, state.val);
+        if (!result.valid) {
+          this.log.warn('Command rejected: ' + result.reason);
+          return;
+        }
+
+        const data = result.data;
         this.log.debug('Data to send: ' + JSON.stringify(data));
 
         const headers = {
