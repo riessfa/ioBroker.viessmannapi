@@ -272,6 +272,137 @@ describe('Viessmannapi auth timer handling', () => {
   });
 });
 
+describe('Viessmannapi auth happy paths', () => {
+  let timers;
+
+  beforeEach(() => {
+    timers = useFakeTimers();
+  });
+
+  afterEach(() => {
+    timers.restore();
+    delete require.cache[require.resolve('./main')];
+  });
+
+  function trackSetState(adapter) {
+    const calls = [];
+    adapter.setState = (id, val, ack) => {
+      calls.push({ id, val, ack });
+    };
+    return calls;
+  }
+
+  it('completes a happy-path login, sets the session, and schedules a refresh', async () => {
+    const adapter = createAdapter();
+    const setStateCalls = trackSetState(adapter);
+    const requests = [];
+
+    adapter.config = { username: 'user', password: 'pass', client_id: 'client-id' };
+    adapter.requestClient.defaults.adapter = async (config) => {
+      requests.push(config);
+      if (config.method === 'get') {
+        const error = new Error('redirect intercepted');
+        error.request = { _currentUrl: 'http://localhost:4200/?code=auth-code' };
+        throw error;
+      }
+      return {
+        config,
+        data: { access_token: 'access-1', refresh_token: 'refresh-1', expires_in: 3600 },
+        headers: {},
+        status: 200,
+        statusText: 'OK',
+      };
+    };
+
+    await adapter.login();
+
+    expect(requests).to.have.length(2);
+    expect(requests[0].url).to.include('/idp/v3/authorize');
+    expect(requests[1].url).to.include('/idp/v3/token');
+    expect(requests[1].data).to.include('grant_type=authorization_code');
+    expect(requests[1].data).to.include('code=auth-code');
+    expect(adapter.session).to.deep.equal({
+      access_token: 'access-1',
+      refresh_token: 'refresh-1',
+      expires_in: 3600,
+    });
+    expect(setStateCalls).to.deep.include({ id: 'info.connection', val: true, ack: true });
+    expect(timers.timeouts).to.have.length(1);
+    expect(timers.timeouts[0].active).to.equal(true);
+    expect(adapter.refreshTokenTimeout).to.equal(timers.timeouts[0]);
+  });
+
+  it('refreshes the session and reschedules on a successful refresh', async () => {
+    const adapter = createAdapter();
+    const setStateCalls = trackSetState(adapter);
+    const requests = [];
+
+    adapter.config = { client_id: 'client-id' };
+    adapter.session = { refresh_token: 'old-refresh', expires_in: 3600 };
+    adapter.requestClient.defaults.adapter = async (config) => {
+      requests.push(config);
+      return {
+        config,
+        data: { access_token: 'access-2', refresh_token: 'refresh-2', expires_in: 1800 },
+        headers: {},
+        status: 200,
+        statusText: 'OK',
+      };
+    };
+
+    await adapter.refreshToken();
+
+    expect(requests).to.have.length(1);
+    expect(requests[0].method).to.equal('post');
+    expect(requests[0].url).to.include('/idp/v3/token');
+    expect(requests[0].data).to.include('grant_type=refresh_token');
+    expect(requests[0].data).to.include('refresh_token=old-refresh');
+    expect(adapter.session).to.deep.equal({
+      access_token: 'access-2',
+      refresh_token: 'refresh-2',
+      expires_in: 1800,
+    });
+    expect(setStateCalls).to.deep.include({ id: 'info.connection', val: true, ack: true });
+    expect(timers.timeouts).to.have.length(1);
+    expect(adapter.refreshTokenTimeout).to.equal(timers.timeouts[0]);
+    expect(adapter.reLoginTimeout).to.equal(null);
+  });
+
+  it('onUnload clears auth and polling timers, detaches the retry interceptor, and runs the callback', () => {
+    const adapter = createAdapter();
+    const setStateCalls = trackSetState(adapter);
+
+    const refreshTimer = setTimeout(noop, 1000);
+    const reloginTimer = setTimeout(noop, 1000);
+    const updateInterval = setInterval(noop, 1000);
+    const eventInterval = setInterval(noop, 1000);
+    adapter.refreshTokenTimeout = refreshTimer;
+    adapter.reLoginTimeout = reloginTimer;
+    adapter.updateInterval = updateInterval;
+    adapter.eventInterval = eventInterval;
+
+    const interceptorIdBeforeUnload = adapter.retryInterceptorId;
+    expect(interceptorIdBeforeUnload).to.be.a('number');
+
+    let callbackCalls = 0;
+    adapter.onUnload(() => {
+      callbackCalls += 1;
+    });
+
+    expect(callbackCalls).to.equal(1);
+    expect(setStateCalls).to.deep.include({ id: 'info.connection', val: false, ack: true });
+    expect(refreshTimer.active).to.equal(false);
+    expect(reloginTimer.active).to.equal(false);
+    expect(updateInterval.active).to.equal(false);
+    expect(eventInterval.active).to.equal(false);
+    expect(adapter.refreshTokenTimeout).to.equal(null);
+    expect(adapter.reLoginTimeout).to.equal(null);
+    expect(adapter.updateInterval).to.equal(null);
+    expect(adapter.eventInterval).to.equal(null);
+    expect(adapter.retryInterceptorId).to.equal(undefined);
+  });
+});
+
 describe('Viessmannapi retry handling', () => {
   afterEach(() => {
     delete require.cache[require.resolve('./main')];
