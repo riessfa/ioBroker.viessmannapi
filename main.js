@@ -22,11 +22,11 @@
 // you need to create an adapter
 const utils = require('@iobroker/adapter-core');
 const rax = require('retry-axios');
-const axios = require('axios').default;
 const crypto = require('crypto');
 const qs = require('qs');
 const { extractKeys } = require('./lib/extractKeys');
 const { sanitizeUrlForLog, stringifyForLog } = require('./lib/safeLog');
+const { createApiClient } = require('./lib/apiClient');
 
 const TOKEN_REFRESH_EXPIRY_BUFFER_SECONDS = 100;
 const MIN_TOKEN_REFRESH_DELAY_MS = 30 * 1000;
@@ -47,14 +47,9 @@ class Viessmannapi extends utils.Adapter {
     this.on('unload', this.onUnload.bind(this));
     this.installationArray = [];
     this.userAgent = 'ioBroker 2.0.4';
-    this.requestClient = axios.create();
-    this.requestClient.defaults.raxConfig = {
-      instance: this.requestClient,
-      retry: 0,
-      statusCodesToRetry: [[500, 599]],
-      httpMethodsToRetry: ['POST'],
-    };
-    this.retryInterceptorId = rax.attach(this.requestClient);
+    const { client, retryInterceptorId } = createApiClient();
+    this.requestClient = client;
+    this.retryInterceptorId = retryInterceptorId;
     this.updateInterval = null;
     this.eventInterval = null;
     this.reLoginTimeout = null;
