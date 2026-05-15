@@ -1,8 +1,12 @@
 {
   "common": {
     "name": "viessmannapi",
-    "version": "2.4.5",
+    "version": "2.5.0",
     "news": {
+      "2.5.0": {
+        "en": "Improve authentication failure handling, retry behavior, safe logging checks, and request flow test coverage",
+        "de": "Verbesserte Behandlung von Authentifizierungsfehlern, Retry-Verhalten, Safe-Logging-Prüfungen und Testabdeckung der Request-Flows"
+      },
       "2.4.5": {
         "en": "remove logbook from objects",
         "de": "logbook aus Objekten entfernt",
