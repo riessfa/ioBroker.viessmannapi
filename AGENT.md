@@ -215,7 +215,7 @@ npm ci
 - `forceIndex: true` disables smart naming — uses numeric indices (used for events)
 - When `isExecutable: true` found: creates a writable `setValue` state with param constraints (min/max/enum) from API metadata
 - JSON strings auto-parsed and recursively extracted
-- Objects cached in `alreadyCreatedOBjects` map to skip redundant `setObjectNotExistsAsync` calls
+- Objects cached in `alreadyCreatedObjects` map to skip redundant `setObjectNotExistsAsync` calls
 - `json-bigint` used to safely parse responses with large numeric IDs
 
 ### Sensitive Data Handling

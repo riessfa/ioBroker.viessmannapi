@@ -131,7 +131,7 @@ class Viessmannapi extends utils.Adapter {
     this.idArray = [];
     this.session = {};
     this.rangeMapSupport = {};
-    this.gateWayIndexOject = {};
+    this.gatewayIndexObject = {};
   }
 
   logAxiosError(context, error) {
@@ -358,7 +358,7 @@ class Viessmannapi extends utils.Adapter {
             installation.id,
         );
       }
-      this.gateWayIndexOject[installationId] = currentGatewayIndex;
+      this.gatewayIndexObject[installationId] = currentGatewayIndex;
       const gateway = installation.gateways[currentGatewayIndex - 1];
       if (!gateway || gateway == null) {
         this.log.warn('No gateway found for installation ' + installation.id + 'and index ' + currentGatewayIndex);
@@ -405,7 +405,7 @@ class Viessmannapi extends utils.Adapter {
     };
 
     for (const installation of this.installationArray) {
-      const currentGatewayIndex = this.gateWayIndexOject[installation.id.toString()];
+      const currentGatewayIndex = this.gatewayIndexObject[installation.id.toString()];
       if (!installation['gateways'][currentGatewayIndex - 1]) {
         this.log.warn('No gateway found for installation ' + installation.id);
         return;
@@ -532,7 +532,7 @@ class Viessmannapi extends utils.Adapter {
     };
     for (const installation of this.installationArray) {
       const installationId = installation.id.toString();
-      const currentGatewayIndex = this.gateWayIndexOject[installationId];
+      const currentGatewayIndex = this.gatewayIndexObject[installationId];
       if (!installation['gateways'][currentGatewayIndex - 1]) {
         this.log.warn('No gateway found for installation ' + installation.id + 'and index ' + currentGatewayIndex);
         return;

@@ -215,7 +215,7 @@ describe('Viessmannapi auth timer handling', () => {
         ],
       },
     ];
-    adapter.gateWayIndexOject = { 'installation-1': 1 };
+    adapter.gatewayIndexObject = { 'installation-1': 1 };
     adapter.requestClient.defaults.adapter = async () => {
       throw axiosError(401, { error: 'unauthorized' });
     };
