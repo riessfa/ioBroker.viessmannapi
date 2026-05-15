@@ -99,10 +99,178 @@ function createExtractKeysAdapterMock() {
   };
 }
 
+function useFakeTimers() {
+  const originalSetTimeout = global.setTimeout;
+  const originalClearTimeout = global.clearTimeout;
+  const originalSetInterval = global.setInterval;
+  const originalClearInterval = global.clearInterval;
+  const timeouts = [];
+  const intervals = [];
+  const clearedTimeouts = [];
+  const clearedIntervals = [];
+
+  global.setTimeout = (callback, delay) => {
+    const timer = { callback, delay, active: true, type: 'timeout' };
+    timeouts.push(timer);
+    return timer;
+  };
+  global.clearTimeout = (timer) => {
+    if (timer) {
+      timer.active = false;
+      clearedTimeouts.push(timer);
+    }
+  };
+  global.setInterval = (callback, delay) => {
+    const timer = { callback, delay, active: true, type: 'interval' };
+    intervals.push(timer);
+    return timer;
+  };
+  global.clearInterval = (timer) => {
+    if (timer) {
+      timer.active = false;
+      clearedIntervals.push(timer);
+    }
+  };
+
+  return {
+    timeouts,
+    intervals,
+    clearedTimeouts,
+    clearedIntervals,
+    restore() {
+      global.setTimeout = originalSetTimeout;
+      global.clearTimeout = originalClearTimeout;
+      global.setInterval = originalSetInterval;
+      global.clearInterval = originalClearInterval;
+    },
+  };
+}
+
+function axiosError(status, data = { message: 'error' }) {
+  const error = new Error('Request failed with status code ' + status);
+  error.response = {
+    status,
+    data,
+    headers: {},
+  };
+  return error;
+}
+
 function testRoot(name) {
   testCounter += 1;
   return `test.${testCounter}.${name}`;
 }
+
+describe('Viessmannapi auth timer handling', () => {
+  let timers;
+
+  beforeEach(() => {
+    timers = useFakeTimers();
+  });
+
+  afterEach(() => {
+    timers.restore();
+    delete require.cache[require.resolve('./main')];
+  });
+
+  it('uses a safe minimum refresh delay when expires_in is missing', () => {
+    const adapter = createAdapter();
+
+    adapter.session = { access_token: 'access-token' };
+    adapter.scheduleTokenRefresh();
+
+    expect(timers.timeouts).to.have.length(1);
+    expect(timers.timeouts[0].delay).to.equal(30 * 1000);
+    expect(adapter.refreshTokenTimeout).to.equal(timers.timeouts[0]);
+  });
+
+  it('uses a safe minimum refresh delay when expires_in is not greater than the refresh buffer', () => {
+    const adapter = createAdapter();
+
+    adapter.session = { access_token: 'access-token', expires_in: 100 };
+    adapter.scheduleTokenRefresh();
+
+    expect(timers.timeouts).to.have.length(1);
+    expect(timers.timeouts[0].delay).to.equal(30 * 1000);
+  });
+
+  it('clears previous refresh timers when repeated 401 responses schedule a retry refresh', async () => {
+    const adapter = createAdapter();
+
+    adapter.config = {};
+    adapter.session = { access_token: 'access-token' };
+    adapter.installationArray = [
+      {
+        id: 'installation-1',
+        gateways: [
+          {
+            devices: [
+              {
+                id: 'device-1',
+                gatewaySerial: 'gateway-1',
+                roles: [],
+              },
+            ],
+          },
+        ],
+      },
+    ];
+    adapter.gateWayIndexOject = { 'installation-1': 1 };
+    adapter.requestClient.defaults.adapter = async () => {
+      throw axiosError(401, { error: 'unauthorized' });
+    };
+
+    await adapter.updateDevices();
+    await adapter.updateDevices();
+
+    expect(timers.timeouts).to.have.length(2);
+    expect(timers.timeouts[0].active).to.equal(false);
+    expect(timers.timeouts[1].active).to.equal(true);
+    expect(timers.clearedTimeouts).to.include(timers.timeouts[0]);
+    expect(adapter.refreshTokenTimeout).to.equal(timers.timeouts[1]);
+  });
+
+  it('clears auth timers and schedules a single relogin when refresh fails', async () => {
+    const adapter = createAdapter();
+
+    adapter.config = { client_id: 'client-id' };
+    adapter.session = { refresh_token: 'refresh-token', expires_in: 3600 };
+    adapter.scheduleTokenRefresh();
+    const oldRefreshTimer = adapter.refreshTokenTimeout;
+    adapter.requestClient.defaults.adapter = async () => {
+      throw axiosError(500);
+    };
+
+    await adapter.refreshToken();
+
+    expect(oldRefreshTimer.active).to.equal(false);
+    expect(timers.timeouts).to.have.length(2);
+    expect(timers.timeouts[1].delay).to.equal(60 * 1000);
+    expect(adapter.reLoginTimeout).to.equal(timers.timeouts[1]);
+    expect(adapter.refreshTokenTimeout).to.equal(null);
+  });
+
+  it('does not duplicate polling intervals after a successful scheduled relogin', async () => {
+    const adapter = createAdapter();
+    const updateInterval = { type: 'interval', active: true };
+    const eventInterval = { type: 'interval', active: true };
+
+    adapter.updateInterval = updateInterval;
+    adapter.eventInterval = eventInterval;
+    adapter.login = async () => {
+      adapter.session = { access_token: 'access-token', expires_in: 3600 };
+      adapter.scheduleTokenRefresh();
+    };
+
+    adapter.scheduleRelogin();
+    await timers.timeouts[0].callback();
+
+    expect(adapter.updateInterval).to.equal(updateInterval);
+    expect(adapter.eventInterval).to.equal(eventInterval);
+    expect(timers.intervals).to.have.length(0);
+    expect(timers.clearedIntervals).to.have.length(0);
+  });
+});
 
 describe('Viessmannapi retry handling', () => {
   afterEach(() => {

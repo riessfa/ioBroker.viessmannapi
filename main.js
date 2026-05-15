@@ -29,6 +29,10 @@ const { extractKeys } = require('./lib/extractKeys');
 
 const SENSITIVE_LOG_KEYS = new Set(['authorization', 'access_token', 'refresh_token', 'client_id', 'password', 'code']);
 const REDACTED_LOG_VALUE = '[redacted]';
+const TOKEN_REFRESH_EXPIRY_BUFFER_SECONDS = 100;
+const MIN_TOKEN_REFRESH_DELAY_MS = 30 * 1000;
+const TOKEN_REFRESH_RETRY_DELAY_MS = 30 * 1000;
+const RELOGIN_DELAY_MS = 60 * 1000;
 
 function sanitizeUrlForLog(value, pathOnly = false) {
   if (typeof value !== 'string') {
@@ -122,6 +126,7 @@ class Viessmannapi extends utils.Adapter {
     this.eventInterval = null;
     this.reLoginTimeout = null;
     this.refreshTokenTimeout = null;
+    this.refreshTokenInterval = null;
     this.extractKeys = extractKeys;
     this.idArray = [];
     this.session = {};
@@ -186,6 +191,7 @@ class Viessmannapi extends utils.Adapter {
       await this.getDeviceIds();
       await this.updateDevices(true);
       await this.getEvents();
+      this.clearPollingTimers();
       this.updateInterval = setInterval(async () => {
         await this.updateDevices();
       }, this.config.interval * 60 * 1000);
@@ -194,9 +200,7 @@ class Viessmannapi extends utils.Adapter {
         await this.getEvents();
       }, this.config.eventInterval * 60 * 1000);
 
-      this.refreshTokenInterval = setInterval(() => {
-        this.refreshToken();
-      }, (this.session.expires_in - 100) * 1000);
+      this.scheduleTokenRefresh();
     }
   }
   async login() {
@@ -268,6 +272,7 @@ class Viessmannapi extends utils.Adapter {
         this.log.debug(JSON.stringify(res.data));
         this.session = res.data;
         this.setState('info.connection', true, true);
+        this.scheduleTokenRefresh();
         return res.data;
       })
       .catch((error) => {
@@ -488,10 +493,7 @@ class Viessmannapi extends utils.Adapter {
               if (error.response && error.response.status === 401) {
                 error.response && this.log.debug(stringifyForLog(error.response.data));
                 this.log.info(element.path + ' receive 401 error. Refresh Token in 30 seconds');
-                this.refreshTokenTimeout && clearTimeout(this.refreshTokenTimeout);
-                this.refreshTokenTimeout = setTimeout(() => {
-                  this.refreshToken();
-                }, 1000 * 30);
+                this.scheduleTokenRefresh(TOKEN_REFRESH_RETRY_DELAY_MS);
 
                 return;
               }
@@ -566,10 +568,7 @@ class Viessmannapi extends utils.Adapter {
             error.response && this.log.debug(stringifyForLog(error.response.data));
 
             this.log.info('Get Events receive 401 error. Refresh Token in 30 seconds');
-            this.refreshTokenTimeout && clearTimeout(this.refreshTokenTimeout);
-            this.refreshTokenTimeout = setTimeout(() => {
-              this.refreshToken();
-            }, 1000 * 30);
+            this.scheduleTokenRefresh(TOKEN_REFRESH_RETRY_DELAY_MS);
 
             return;
           }
@@ -589,6 +588,69 @@ class Viessmannapi extends utils.Adapter {
     }
   }
 
+  getTokenRefreshDelayMs() {
+    const expiresIn = Number(this.session && this.session.expires_in);
+    if (!Number.isFinite(expiresIn) || expiresIn <= TOKEN_REFRESH_EXPIRY_BUFFER_SECONDS) {
+      this.log.warn(
+        'Invalid or very small token expiry received (' +
+          stringifyForLog(this.session && this.session.expires_in) +
+          '). Refresh Token in ' +
+          MIN_TOKEN_REFRESH_DELAY_MS / 1000 +
+          ' seconds',
+      );
+      return MIN_TOKEN_REFRESH_DELAY_MS;
+    }
+
+    const refreshDelay = (expiresIn - TOKEN_REFRESH_EXPIRY_BUFFER_SECONDS) * 1000;
+    return Math.max(refreshDelay, MIN_TOKEN_REFRESH_DELAY_MS);
+  }
+
+  scheduleTokenRefresh(delayMs) {
+    this.clearAuthTimers();
+    const refreshDelay = Number.isFinite(delayMs)
+      ? Math.max(delayMs, MIN_TOKEN_REFRESH_DELAY_MS)
+      : this.getTokenRefreshDelayMs();
+
+    this.refreshTokenTimeout = setTimeout(() => {
+      this.refreshTokenTimeout = null;
+      this.refreshToken();
+    }, refreshDelay);
+  }
+
+  clearAuthTimers() {
+    if (this.refreshTokenTimeout) {
+      clearTimeout(this.refreshTokenTimeout);
+      this.refreshTokenTimeout = null;
+    }
+    if (this.refreshTokenInterval) {
+      clearInterval(this.refreshTokenInterval);
+      this.refreshTokenInterval = null;
+    }
+    if (this.reLoginTimeout) {
+      clearTimeout(this.reLoginTimeout);
+      this.reLoginTimeout = null;
+    }
+  }
+
+  scheduleRelogin() {
+    this.clearAuthTimers();
+    this.reLoginTimeout = setTimeout(async () => {
+      this.reLoginTimeout = null;
+      await this.login();
+    }, RELOGIN_DELAY_MS);
+  }
+
+  clearPollingTimers() {
+    if (this.updateInterval) {
+      clearInterval(this.updateInterval);
+      this.updateInterval = null;
+    }
+    if (this.eventInterval) {
+      clearInterval(this.eventInterval);
+      this.eventInterval = null;
+    }
+  }
+
   async refreshToken() {
     await this.requestClient({
       method: 'post',
@@ -604,6 +666,7 @@ class Viessmannapi extends utils.Adapter {
         this.log.debug(JSON.stringify(res.data));
         this.session = res.data;
         this.setState('info.connection', true, true);
+        this.scheduleTokenRefresh();
         return res.data;
       })
       .catch((error) => {
@@ -611,9 +674,7 @@ class Viessmannapi extends utils.Adapter {
         this.logAxiosError('Refresh token request failed', error);
         this.logResponseData(error);
         this.log.error('Start relogin in 1min');
-        this.reLoginTimeout = setTimeout(() => {
-          this.login();
-        }, 1000 * 60 * 1);
+        this.scheduleRelogin();
       });
   }
   getCodeChallenge() {
@@ -633,11 +694,8 @@ class Viessmannapi extends utils.Adapter {
     try {
       this.setState('info.connection', false, true);
       clearTimeout(this.refreshTimeout);
-      this.reLoginTimeout && clearTimeout(this.reLoginTimeout);
-      this.refreshTokenTimeout && clearTimeout(this.refreshTokenTimeout);
-      this.updateInterval && clearInterval(this.updateInterval);
-      this.eventInterval && clearInterval(this.eventInterval);
-      clearInterval(this.refreshTokenInterval);
+      this.clearAuthTimers();
+      this.clearPollingTimers();
       if (this.retryInterceptorId !== undefined) {
         rax.detach(this.retryInterceptorId, this.requestClient);
         this.retryInterceptorId = undefined;
