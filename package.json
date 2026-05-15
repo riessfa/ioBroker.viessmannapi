@@ -13,7 +13,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/TA2k/ioBroker.viessmannapi"
+    "url": "git+https://github.com/TA2k/ioBroker.viessmannapi.git"
   },
   "dependencies": {
     "@iobroker/adapter-core": "^3.3.2",
@@ -31,7 +31,6 @@
     "@eslint/js": "^10.0.1",
     "@iobroker/testing": "^5.2.2",
     "@types/node": "^25.6.0",
-    "axios": "^1.15.2",
     "eslint": "^10.3.0",
     "globals": "^17.6.0",
     "typescript": "^6.0.3"
@@ -50,5 +49,8 @@
   "bugs": {
     "url": "https://github.com/TA2k/ioBroker.viessmannapi/issues"
   },
-  "readmeFilename": "README.md"
+  "readmeFilename": "README.md",
+  "engines": {
+    "node": ">=20"
+  }
 }

@@ -10,6 +10,7 @@ iobroker.*.tgz
 # ioBroker dev-server
 .dev-server/
 
+.DS_Store
 Thumbs.db
 
 # i18n intermediate files
