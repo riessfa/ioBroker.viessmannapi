@@ -240,6 +240,102 @@ describe('Viessmannapi retry handling', () => {
   });
 });
 
+describe('Viessmannapi axios error logging', () => {
+  afterEach(() => {
+    delete require.cache[require.resolve('./main')];
+  });
+
+  function collectErrorLogs(adapter) {
+    const logs = [];
+    adapter.log.error = (message) => logs.push(String(message));
+    return logs;
+  }
+
+  it('redacts bearer authorization headers and token-bearing URLs', () => {
+    const adapter = createAdapter();
+    const logs = collectErrorLogs(adapter);
+
+    adapter.logAxiosError('Token URL request failed', {
+      message: 'Request failed for https://api.example.com/iot/path?access_token=secret-token&client_id=client-secret',
+      config: {
+        method: 'get',
+        url: 'https://api.example.com/iot/path?access_token=secret-token&client_id=client-secret',
+        headers: {
+          Authorization: 'Bearer secret-bearer-token',
+        },
+        params: {
+          refresh_token: 'secret-refresh-token',
+          client_id: 'secret-client-id',
+        },
+      },
+      request: {
+        _currentUrl: 'https://api.example.com/iot/path?code=secret-code&password=secret-password',
+      },
+      response: {
+        status: 401,
+        data: {
+          access_token: 'secret-response-token',
+          url: 'https://api.example.com/callback?code=secret-response-code',
+        },
+      },
+    });
+
+    const output = logs.join('\n');
+    expect(output).to.include('Token URL request failed');
+    expect(output).to.include('/iot/path');
+    expect(output).to.include('[redacted]');
+    expect(output).not.to.include('secret-token');
+    expect(output).not.to.include('secret-bearer-token');
+    expect(output).not.to.include('secret-refresh-token');
+    expect(output).not.to.include('secret-client-id');
+    expect(output).not.to.include('secret-code');
+    expect(output).not.to.include('secret-password');
+    expect(output).not.to.include('secret-response-token');
+    expect(output).not.to.include('secret-response-code');
+    expect(output).not.to.include('?access_token=');
+    expect(output).not.to.include('?code=');
+  });
+
+  it('redacts Basic authorization headers and form-encoded token data', () => {
+    const adapter = createAdapter();
+    const logs = collectErrorLogs(adapter);
+
+    adapter.logAxiosError('Basic auth request failed', {
+      message: 'Basic dXNlcjpzZWNyZXQ= failed',
+      config: {
+        method: 'post',
+        url: 'https://iam.example.com/idp/v3/token?client_id=query-client-secret',
+        headers: {
+          authorization: 'Basic dXNlcjpzZWNyZXQ=',
+        },
+        data: 'grant_type=refresh_token&client_id=form-client-secret&refresh_token=form-refresh-secret&code=form-code-secret&password=form-password-secret',
+      },
+      response: {
+        status: 400,
+        data: {
+          error: 'invalid_request',
+          nested: {
+            password: 'response-password-secret',
+          },
+        },
+      },
+    });
+
+    const output = logs.join('\n');
+    expect(output).to.include('Basic auth request failed');
+    expect(output).to.include('[redacted]');
+    expect(output).not.to.include('dXNlcjpzZWNyZXQ=');
+    expect(output).not.to.include('query-client-secret');
+    expect(output).not.to.include('form-client-secret');
+    expect(output).not.to.include('form-refresh-secret');
+    expect(output).not.to.include('form-code-secret');
+    expect(output).not.to.include('form-password-secret');
+    expect(output).not.to.include('response-password-secret');
+    expect(output).not.to.include('?client_id=');
+  });
+});
+
+
 describe('extractKeys', () => {
   it('extracts nested objects after the returned promise resolves', async () => {
     const adapter = createExtractKeysAdapterMock();
