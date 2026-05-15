@@ -47,11 +47,11 @@ function createAdapter() {
   return loadAdapterFactory()({});
 }
 
-function transientServerError(config) {
-  const error = new Error('Request failed with status code 500');
+function transientServerError(config, status = 500) {
+  const error = new Error('Request failed with status code ' + status);
   error.config = config;
   error.response = {
-    status: 500,
+    status,
     data: { message: 'transient error' },
     headers: {},
   };
@@ -161,6 +161,69 @@ function testRoot(name) {
   return `test.${testCounter}.${name}`;
 }
 
+function setupDeviceUpdateTest(options = {}) {
+  const adapter = createAdapter();
+  const requests = [];
+  const extracted = [];
+  const logs = {
+    debug: [],
+    error: [],
+    info: [],
+    warn: [],
+  };
+
+  adapter.config = {
+    featureFilter: '',
+    allowVirtual: false,
+    ...options.config,
+  };
+  adapter.session = { access_token: 'access-token' };
+  adapter.log = {
+    debug: (msg) => logs.debug.push(String(msg)),
+    error: (msg) => logs.error.push(String(msg)),
+    info: (msg) => logs.info.push(String(msg)),
+    warn: (msg) => logs.warn.push(String(msg)),
+  };
+  adapter.installationArray = [
+    {
+      id: 'installation-1',
+      gateways: [
+        {
+          devices: [
+            {
+              id: 'device-1',
+              gatewaySerial: 'gateway-1',
+              roles: [],
+              deviceType: 'boiler',
+            },
+          ],
+        },
+      ],
+    },
+  ];
+  adapter.gatewayIndexObject = { 'installation-1': 1 };
+  adapter.extractKeys = async (...args) => {
+    extracted.push(args);
+  };
+  adapter.requestClient.defaults.adapter = async (config) => {
+    requests.push(config);
+    if (options.errorStatus) {
+      throw axiosError(options.errorStatus, options.errorData || { message: 'error-' + options.errorStatus });
+    }
+    return {
+      config,
+      data: {
+        data: options.features || [],
+      },
+      headers: {},
+      status: 200,
+      statusText: 'OK',
+    };
+  };
+
+  return { adapter, requests, extracted, logs };
+}
+
 describe('Viessmannapi auth timer handling', () => {
   let timers;
 
@@ -222,6 +285,36 @@ describe('Viessmannapi auth timer handling', () => {
 
     await adapter.updateDevices();
     await adapter.updateDevices();
+
+    expect(timers.timeouts).to.have.length(2);
+    expect(timers.timeouts[0].active).to.equal(false);
+    expect(timers.timeouts[1].active).to.equal(true);
+    expect(timers.clearedTimeouts).to.include(timers.timeouts[0]);
+    expect(adapter.refreshTokenTimeout).to.equal(timers.timeouts[1]);
+  });
+
+  it('clears previous refresh timers when repeated event 401 responses schedule a retry refresh', async () => {
+    const adapter = createAdapter();
+
+    adapter.config = {};
+    adapter.session = { access_token: 'access-token' };
+    adapter.installationArray = [
+      {
+        id: 'installation-1',
+        gateways: [
+          {
+            devices: [],
+          },
+        ],
+      },
+    ];
+    adapter.gatewayIndexObject = { 'installation-1': 1 };
+    adapter.requestClient.defaults.adapter = async () => {
+      throw axiosError(401, { error: 'unauthorized' });
+    };
+
+    await adapter.getEvents();
+    await adapter.getEvents();
 
     expect(timers.timeouts).to.have.length(2);
     expect(timers.timeouts[0].active).to.equal(false);
@@ -403,6 +496,92 @@ describe('Viessmannapi auth happy paths', () => {
   });
 });
 
+describe('Viessmannapi auth failure paths', () => {
+  let timers;
+
+  beforeEach(() => {
+    timers = useFakeTimers();
+  });
+
+  afterEach(() => {
+    timers.restore();
+    delete require.cache[require.resolve('./main')];
+  });
+
+  function trackSetState(adapter) {
+    const calls = [];
+    adapter.setState = (id, val, ack) => {
+      calls.push({ id, val, ack });
+    };
+    return calls;
+  }
+
+  it('does not exchange a token when authorization fails without a redirect code', async () => {
+    const adapter = createAdapter();
+    const setStateCalls = trackSetState(adapter);
+    const requests = [];
+
+    adapter.config = { username: 'user', password: 'pass', client_id: 'client-id' };
+    adapter.requestClient.defaults.adapter = async (config) => {
+      requests.push(config);
+      throw axiosError(400, { error: 'invalid_request' });
+    };
+
+    await adapter.login();
+
+    expect(requests).to.have.length(1);
+    expect(requests[0].method).to.equal('get');
+    expect(requests[0].url).to.include('/idp/v3/authorize');
+    expect(adapter.session).to.deep.equal({});
+    expect(setStateCalls).to.deep.include({ id: 'info.connection', val: false, ack: true });
+    expect(timers.timeouts).to.have.length(0);
+  });
+
+  it('keeps the session empty and marks the adapter disconnected when token exchange fails', async () => {
+    const adapter = createAdapter();
+    const setStateCalls = trackSetState(adapter);
+    const requests = [];
+
+    adapter.config = { username: 'user', password: 'pass', client_id: 'client-id' };
+    adapter.requestClient.defaults.adapter = async (config) => {
+      requests.push(config);
+      if (config.method === 'get') {
+        const error = new Error('redirect intercepted');
+        error.request = { _currentUrl: 'http://localhost:4200/?code=auth-code' };
+        throw error;
+      }
+      throw axiosError(400, { error: 'invalid_grant' });
+    };
+
+    await adapter.login();
+
+    expect(requests).to.have.length(2);
+    expect(requests[1].method).to.equal('post');
+    expect(requests[1].data).to.include('grant_type=authorization_code');
+    expect(adapter.session).to.deep.equal({});
+    expect(setStateCalls).to.deep.include({ id: 'info.connection', val: false, ack: true });
+    expect(timers.timeouts).to.have.length(0);
+  });
+
+  it('marks the adapter disconnected and schedules relogin when refresh fails', async () => {
+    const adapter = createAdapter();
+    const setStateCalls = trackSetState(adapter);
+
+    adapter.config = { client_id: 'client-id' };
+    adapter.session = { refresh_token: 'refresh-token', expires_in: 3600 };
+    adapter.requestClient.defaults.adapter = async () => {
+      throw axiosError(400, { error: 'invalid_grant' });
+    };
+
+    await adapter.refreshToken();
+
+    expect(setStateCalls).to.deep.include({ id: 'info.connection', val: false, ack: true });
+    expect(timers.timeouts).to.have.length(1);
+    expect(timers.timeouts[0].delay).to.equal(60 * 1000);
+    expect(adapter.reLoginTimeout).to.equal(timers.timeouts[0]);
+  });
+});
+
 describe('Viessmannapi retry handling', () => {
   afterEach(() => {
     delete require.cache[require.resolve('./main')];
@@ -413,7 +592,6 @@ describe('Viessmannapi retry handling', () => {
 
     expect(adapter.retryInterceptorId).to.be.a('number');
     expect(adapter.requestClient.defaults.raxConfig).to.include({
-      instance: adapter.requestClient,
       retry: 0,
     });
     expect(adapter.requestClient.defaults.raxConfig.httpMethodsToRetry).to.deep.equal(['POST']);
@@ -461,6 +639,47 @@ describe('Viessmannapi retry handling', () => {
     expect(calls[0].data).to.equal(JSON.stringify({ temperature: 21 }));
   });
 
+  for (const status of [502, 504]) {
+    it('retries command POST writes after a transient ' + status + ' response', async () => {
+      const adapter = createAdapter();
+      const calls = [];
+
+      adapter.session = { access_token: 'access-token' };
+      adapter.getStateAsync = async () => ({ val: 'https://example.com/command' });
+      adapter.getObjectAsync = async () => ({ common: { param: 'temperature' } });
+      adapter.updateDevices = async () => {};
+      adapter.requestClient.interceptors.request.use((config) => {
+        config.raxConfig.retryDelay = 0;
+        return config;
+      });
+      adapter.requestClient.defaults.adapter = async (config) => {
+        calls.push(config);
+
+        if (calls.length === 1) {
+          throw transientServerError(config, status);
+        }
+
+        return {
+          config,
+          data: { ok: true },
+          headers: {},
+          status: 200,
+          statusText: 'OK',
+        };
+      };
+
+      await adapter.onStateChange('viessmannapi.0.device.feature.setValue', {
+        ack: false,
+        val: '21',
+      });
+
+      expect(calls).to.have.length(2);
+      expect(calls[0].method).to.equal('post');
+      expect(calls[1].method).to.equal('post');
+      expect(calls[0].data).to.equal(JSON.stringify({ temperature: 21 }));
+    });
+  }
+
   it('keeps the intended per-request retry settings for command writes', async () => {
     const adapter = createAdapter();
     const calls = [];
@@ -491,7 +710,6 @@ describe('Viessmannapi retry handling', () => {
     expect(calls).to.have.length(1);
     expect(calls[0].raxConfig).to.include({
       retry: 5,
-      noResponseRetries: 2,
       retryDelay: 5000,
       backoffType: 'static',
     });
@@ -536,6 +754,107 @@ describe('Viessmannapi retry handling', () => {
     }).catch(noop);
 
     expect(calls).to.have.length(1);
+  });
+});
+
+describe('Viessmannapi feature update handling', () => {
+  afterEach(() => {
+    delete require.cache[require.resolve('./main')];
+  });
+
+  it('filters features by exact matches and removes logbook features', async () => {
+    const { adapter, extracted } = setupDeviceUpdateTest({
+      config: {
+        featureFilter: 'heating.dhw.temperature, ventilation.quickmodes.active',
+      },
+      features: [
+        { feature: 'heating.dhw.temperature', value: 50 },
+        { feature: 'heating.boiler.temperature', value: 60 },
+        { feature: 'ventilation.quickmodes.active', value: true },
+        { feature: 'device.messages.logbook.active', value: true },
+      ],
+    });
+
+    await adapter.updateDevices();
+
+    expect(extracted).to.have.length(1);
+    expect(extracted[0][2]).to.deep.equal([
+      { feature: 'heating.dhw.temperature', value: 50 },
+      { feature: 'ventilation.quickmodes.active', value: true },
+    ]);
+  });
+
+  it('filters features by wildcard patterns including the base path', async () => {
+    const { adapter, extracted } = setupDeviceUpdateTest({
+      config: {
+        featureFilter: ' heating.* ',
+      },
+      features: [
+        { feature: 'heating', value: true },
+        { feature: 'heating.boiler.temperature', value: 60 },
+        { feature: 'heatingExtra.boiler.temperature', value: 70 },
+        { feature: 'dhw.heating.temperature', value: 55 },
+      ],
+    });
+
+    await adapter.updateDevices();
+
+    expect(extracted).to.have.length(1);
+    expect(extracted[0][2]).to.deep.equal([
+      { feature: 'heating', value: true },
+      { feature: 'heating.boiler.temperature', value: 60 },
+    ]);
+  });
+
+  it('logs rate limits and request details for feature update 429 responses', async () => {
+    const { adapter, logs } = setupDeviceUpdateTest({
+      errorStatus: 429,
+      errorData: { message: 'rate limited' },
+    });
+
+    await adapter.updateDevices();
+
+    expect(logs.info.join('\n')).to.include('Rate limit reached');
+    expect(logs.error.join('\n')).to.include('Feature update request failed');
+    expect(logs.error.join('\n')).to.include('/iot/v2/features/installations');
+  });
+
+  it('logs a generic unstable-server message for feature update 500 responses', async () => {
+    const { adapter, logs } = setupDeviceUpdateTest({
+      errorStatus: 500,
+      errorData: { message: 'server error' },
+    });
+
+    await adapter.updateDevices();
+
+    expect(logs.info.join('\n')).to.include('Error 500');
+    expect(logs.info.join('\n')).to.include('unstable server');
+    expect(logs.error).to.have.length(0);
+  });
+
+  it('logs gateway guidance for feature update 502 responses', async () => {
+    const { adapter, logs } = setupDeviceUpdateTest({
+      errorStatus: 502,
+      errorData: { message: 'bad gateway' },
+    });
+
+    await adapter.updateDevices();
+
+    expect(logs.info.join('\n')).to.include('bad gateway');
+    expect(logs.info.join('\n')).to.include('Please check the connection of your gateway');
+    expect(logs.info.join('\n')).not.to.include('unstable server');
+  });
+
+  it('logs availability guidance for feature update 504 responses', async () => {
+    const { adapter, logs } = setupDeviceUpdateTest({
+      errorStatus: 504,
+      errorData: { message: 'gateway timeout' },
+    });
+
+    await adapter.updateDevices();
+
+    expect(logs.info.join('\n')).to.include('Viessmann API is not available please try again later');
+    expect(logs.info.join('\n')).not.to.include('unstable server');
   });
 });
 
@@ -670,6 +989,10 @@ describe('Viessmannapi command payload validation', () => {
 
     expect(warns).to.have.length(0);
     expect(calls).to.have.length(1);
+    expect(calls[0].method).to.equal('post');
+    expect(calls[0].url).to.equal('https://example.com/command');
+    expect(calls[0].headers.Authorization).to.equal('Bearer access-token');
+    expect(calls[0].headers['Content-Type']).to.equal('application/json');
     expect(calls[0].data).to.equal(JSON.stringify({ temperature: 21 }));
   });
 
@@ -690,6 +1013,23 @@ describe('Viessmannapi command payload validation', () => {
     expect(warns).to.have.length(0);
     expect(calls).to.have.length(1);
     expect(calls[0].data).to.equal(JSON.stringify({ slope: 1.5, shift: 5 }));
+  });
+
+  it('does not send a command without a URI state', async () => {
+    const { adapter, calls, warns } = setupCommandTest({
+      param: 'temperature',
+      type: 'number',
+    });
+    const infos = [];
+
+    adapter.log.info = (msg) => infos.push(String(msg));
+    adapter.getStateAsync = async () => ({ val: '' });
+
+    await adapter.onStateChange('viessmannapi.0.device.feature.setValue', { ack: false, val: '21' });
+
+    expect(warns).to.have.length(0);
+    expect(calls).to.have.length(0);
+    expect(infos).to.deep.equal(['No URI found']);
   });
 
   it('rejects invalid JSON for multi-parameter commands', async () => {

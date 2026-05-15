@@ -11,6 +11,9 @@
 
         "module": "commonjs",
         "moduleResolution": "node",
+        "ignoreDeprecations": "6.0",
+        "types": ["node"],
+        "skipLibCheck": true,
         "esModuleInterop": true,
         // this is necessary for the automatic typing of the adapter config
         "resolveJsonModule": true,
@@ -27,6 +30,7 @@
 
         // Consider targetting es2019 or higher if you only support Node.js 12+
         "target": "es2018",
+        "lib": ["es2022"],
 
     },
     "include": [

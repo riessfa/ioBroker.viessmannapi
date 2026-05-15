@@ -136,7 +136,7 @@ class Viessmannapi extends utils.Adapter {
       'User-Agent': this.userAgent,
       Authorization: 'Basic ' + Buffer.from(this.config.username + ':' + this.config.password).toString('base64'),
     };
-    let data = {
+    const authorizeParams = {
       client_id: this.config.client_id,
       response_type: 'code',
       scope: 'IoT User offline_access',
@@ -149,7 +149,7 @@ class Viessmannapi extends utils.Adapter {
       method: 'get',
       url: 'https://iam.viessmann-climatesolutions.com/idp/v3/authorize',
       headers: headers,
-      params: data,
+      params: authorizeParams,
     })
       .then((res) => {
         this.log.debug(JSON.stringify(res.data));
@@ -179,7 +179,11 @@ class Viessmannapi extends utils.Adapter {
           }
         }
       });
-    data = {
+    if (!code) {
+      this.setState('info.connection', false, true);
+      return;
+    }
+    const tokenData = {
       grant_type: 'authorization_code',
       code: code,
       client_id: this.config.client_id,
@@ -191,7 +195,7 @@ class Viessmannapi extends utils.Adapter {
       method: 'post',
       url: 'https://iam.viessmann-climatesolutions.com/idp/v3/token',
       headers: headers,
-      data: qs.stringify(data),
+      data: qs.stringify(tokenData),
     })
       .then((res) => {
         this.log.debug(JSON.stringify(res.data));
@@ -425,6 +429,15 @@ class Viessmannapi extends utils.Adapter {
               if (error.response && error.response.status === 429) {
                 this.log.info('Rate limit reached. Will be reseted next day 02:00');
               }
+              if (error.response && error.response.status === 502) {
+                this.log.info(stringifyForLog(error.response.data));
+                this.log.info('Please check the connection of your gateway');
+                return;
+              }
+              if (error.response && error.response.status === 504) {
+                this.log.info('Viessmann API is not available please try again later');
+                return;
+              }
               if (error.response && error.response.status >= 500) {
                 this.log.info(
                   'Error ' +
@@ -432,13 +445,6 @@ class Viessmannapi extends utils.Adapter {
                     '. ViessmanAPI not available because of unstable server. Please contact Viessmann and ask them to improve their server',
                 );
                 return;
-              }
-              if (error.response && error.response.status === 502) {
-                this.log.info(stringifyForLog(error.response.data));
-                this.log.info('Please check the connection of your gateway');
-              }
-              if (error.response && error.response.status === 504) {
-                this.log.info('Viessmann API is not available please try again later');
               }
               this.log.error('Feature update URL path: ' + sanitizeUrlForLog(url, true));
               this.logAxiosError('Feature update request failed', error);
@@ -696,7 +702,7 @@ class Viessmannapi extends utils.Adapter {
         const uriState = await this.getStateAsync(parentPath + '.uri');
         const idState = await this.getObjectAsync(parentPath + '.setValue');
 
-        if (!uriState || !uriState.val) {
+        if (!uriState || typeof uriState.val !== 'string' || !uriState.val) {
           this.log.info('No URI found');
           return;
         }
@@ -723,11 +729,10 @@ class Viessmannapi extends utils.Adapter {
           data: data,
           raxConfig: {
             retry: 5,
-            noResponseRetries: 2,
             retryDelay: 5000,
             backoffType: 'static',
             statusCodesToRetry: [[500, 599]],
-            onRetryAttempt: (error) => {
+            onRetryAttempt: async (error) => {
               const cfg = rax.getConfig(error);
               if (error.response) {
                 this.log.error(stringifyForLog(error.response.data));
