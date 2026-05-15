@@ -1,6 +1,11 @@
 .*
 node_modules/
 nbproject/
+
+# local/editor metadata
+.DS_Store
+.idea/
+.vscode/
 *.code-workspace
 Thumbs.db
 gulpfile.js
