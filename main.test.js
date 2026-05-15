@@ -2,7 +2,6 @@
 
 const EventEmitter = require('events');
 const Module = require('module');
-const sinon = require('sinon');
 const { expect } = require('chai');
 
 const noop = () => {};
@@ -34,11 +33,12 @@ function loadAdapterFactory() {
     return originalLoad.apply(this, [request, parent, isMain]);
   };
 
-  delete require.cache[require.resolve('./main')];
-  const createAdapter = require('./main');
-  Module._load = originalLoad;
-
-  return createAdapter;
+  try {
+    delete require.cache[require.resolve('./main')];
+    return require('./main');
+  } finally {
+    Module._load = originalLoad;
+  }
 }
 
 function createAdapter() {
@@ -58,7 +58,6 @@ function transientServerError(config) {
 
 describe('Viessmannapi retry handling', () => {
   afterEach(() => {
-    sinon.restore();
     delete require.cache[require.resolve('./main')];
   });
 
@@ -76,13 +75,16 @@ describe('Viessmannapi retry handling', () => {
 
   it('retries command POST writes after a transient 500 response', async () => {
     const adapter = createAdapter();
-    const clock = sinon.useFakeTimers();
     const calls = [];
 
     adapter.session = { access_token: 'access-token' };
     adapter.getStateAsync = async () => ({ val: 'https://example.com/command' });
     adapter.getObjectAsync = async () => ({ common: { param: 'temperature' } });
     adapter.updateDevices = async () => {};
+    adapter.requestClient.interceptors.request.use((config) => {
+      config.raxConfig.retryDelay = 0;
+      return config;
+    });
     adapter.requestClient.defaults.adapter = async (config) => {
       calls.push(config);
 
@@ -104,10 +106,7 @@ describe('Viessmannapi retry handling', () => {
       val: '21',
     });
 
-    await clock.tickAsync(0);
-    await clock.tickAsync(5000);
     await commandWrite;
-    clock.restore();
 
     expect(calls).to.have.length(2);
     expect(calls[0].method).to.equal('post');
@@ -117,7 +116,6 @@ describe('Viessmannapi retry handling', () => {
 
   it('keeps the intended per-request retry settings for command writes', async () => {
     const adapter = createAdapter();
-    const clock = sinon.useFakeTimers();
     const calls = [];
 
     adapter.session = { access_token: 'access-token' };
@@ -141,9 +139,7 @@ describe('Viessmannapi retry handling', () => {
       val: 'comfort',
     });
 
-    await clock.tickAsync(0);
     await commandWrite;
-    clock.restore();
 
     expect(calls).to.have.length(1);
     expect(calls[0].raxConfig).to.include({
