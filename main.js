@@ -219,7 +219,7 @@ class Viessmannapi extends utils.Adapter {
               },
               native: {},
             });
-            this.extractKeys(this, installationId, installation, null, true);
+            await this.extractKeys(this, installationId, installation, null, true);
           }
         } else {
           this.log.info('No installation found. Please connect your device with your Viessmann account');
@@ -289,7 +289,7 @@ class Viessmannapi extends utils.Adapter {
           native: {},
         });
 
-        this.extractKeys(this, installationId + '.' + device.id + '.general', device);
+        await this.extractKeys(this, installationId + '.' + device.id + '.general', device);
       }
     }
   }
@@ -350,7 +350,7 @@ class Viessmannapi extends utils.Adapter {
             url: url,
             headers: headers,
           })
-            .then((res) => {
+            .then(async (res) => {
               this.log.debug(url + ' ' + device.id + ' ' + JSON.stringify(res.data));
               if (!res.data) {
                 return;
@@ -394,7 +394,7 @@ class Viessmannapi extends utils.Adapter {
               const extractPath = installation.id + '.' + device.id + '.' + element.path;
               const forceIndex = null;
 
-              this.extractKeys(this, extractPath, data, 'feature', forceIndex, false, element.desc);
+              await this.extractKeys(this, extractPath, data, 'feature', forceIndex, false, element.desc);
             })
             .catch((error) => {
               if (error.response && error.response.status === 401) {
@@ -457,7 +457,7 @@ class Viessmannapi extends utils.Adapter {
           '/events',
         headers: headers,
       })
-        .then((res) => {
+        .then(async (res) => {
           this.log.debug(JSON.stringify(res.data));
           if (!res.data) {
             return;
@@ -471,7 +471,7 @@ class Viessmannapi extends utils.Adapter {
             data = data[0];
           }
 
-          this.extractKeys(this, installationId + '.events', data, null, true);
+          await this.extractKeys(this, installationId + '.events', data, null, true);
         })
         .catch((error) => {
           if (error.response && error.response.status === 401) {
