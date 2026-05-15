@@ -44,10 +44,11 @@ class Viessmannapi extends utils.Adapter {
     this.requestClient = axios.create();
     this.requestClient.defaults.raxConfig = {
       instance: this.requestClient,
+      retry: 0,
       statusCodesToRetry: [[500, 599]],
       httpMethodsToRetry: ['POST'],
     };
-    // const interceptorId = rax.attach(this.requestClient);
+    this.retryInterceptorId = rax.attach(this.requestClient);
     this.updateInterval = null;
     this.eventInterval = null;
     this.reLoginTimeout = null;
@@ -551,6 +552,10 @@ class Viessmannapi extends utils.Adapter {
       this.updateInterval && clearInterval(this.updateInterval);
       this.eventInterval && clearInterval(this.eventInterval);
       clearInterval(this.refreshTokenInterval);
+      if (this.retryInterceptorId !== undefined) {
+        rax.detach(this.retryInterceptorId, this.requestClient);
+        this.retryInterceptorId = undefined;
+      }
       callback();
     } catch (e) {
       this.log.error('Error: ' + e);
