@@ -22,16 +22,13 @@
 // you need to create an adapter
 const utils = require('@iobroker/adapter-core');
 const rax = require('retry-axios');
-const crypto = require('crypto');
 const qs = require('qs');
 const { extractKeys } = require('./lib/extractKeys');
 const { sanitizeUrlForLog, stringifyForLog } = require('./lib/safeLog');
 const { createApiClient } = require('./lib/apiClient');
+const authHelpers = require('./lib/auth');
 
-const TOKEN_REFRESH_EXPIRY_BUFFER_SECONDS = 100;
-const MIN_TOKEN_REFRESH_DELAY_MS = 30 * 1000;
-const TOKEN_REFRESH_RETRY_DELAY_MS = 30 * 1000;
-const RELOGIN_DELAY_MS = 60 * 1000;
+const { TOKEN_REFRESH_RETRY_DELAY_MS } = authHelpers;
 
 class Viessmannapi extends utils.Adapter {
   /**
@@ -517,55 +514,19 @@ class Viessmannapi extends utils.Adapter {
   }
 
   getTokenRefreshDelayMs() {
-    const expiresIn = Number(this.session && this.session.expires_in);
-    if (!Number.isFinite(expiresIn) || expiresIn <= TOKEN_REFRESH_EXPIRY_BUFFER_SECONDS) {
-      this.log.warn(
-        'Invalid or very small token expiry received (' +
-          stringifyForLog(this.session && this.session.expires_in) +
-          '). Refresh Token in ' +
-          MIN_TOKEN_REFRESH_DELAY_MS / 1000 +
-          ' seconds',
-      );
-      return MIN_TOKEN_REFRESH_DELAY_MS;
-    }
-
-    const refreshDelay = (expiresIn - TOKEN_REFRESH_EXPIRY_BUFFER_SECONDS) * 1000;
-    return Math.max(refreshDelay, MIN_TOKEN_REFRESH_DELAY_MS);
+    return authHelpers.getTokenRefreshDelayMs(this);
   }
 
   scheduleTokenRefresh(delayMs) {
-    this.clearAuthTimers();
-    const refreshDelay = Number.isFinite(delayMs)
-      ? Math.max(delayMs, MIN_TOKEN_REFRESH_DELAY_MS)
-      : this.getTokenRefreshDelayMs();
-
-    this.refreshTokenTimeout = setTimeout(() => {
-      this.refreshTokenTimeout = null;
-      this.refreshToken();
-    }, refreshDelay);
+    return authHelpers.scheduleTokenRefresh(this, delayMs);
   }
 
   clearAuthTimers() {
-    if (this.refreshTokenTimeout) {
-      clearTimeout(this.refreshTokenTimeout);
-      this.refreshTokenTimeout = null;
-    }
-    if (this.refreshTokenInterval) {
-      clearInterval(this.refreshTokenInterval);
-      this.refreshTokenInterval = null;
-    }
-    if (this.reLoginTimeout) {
-      clearTimeout(this.reLoginTimeout);
-      this.reLoginTimeout = null;
-    }
+    return authHelpers.clearAuthTimers(this);
   }
 
   scheduleRelogin() {
-    this.clearAuthTimers();
-    this.reLoginTimeout = setTimeout(async () => {
-      this.reLoginTimeout = null;
-      await this.login();
-    }, RELOGIN_DELAY_MS);
+    return authHelpers.scheduleRelogin(this);
   }
 
   clearPollingTimers() {
@@ -580,39 +541,10 @@ class Viessmannapi extends utils.Adapter {
   }
 
   async refreshToken() {
-    await this.requestClient({
-      method: 'post',
-      url: 'https://iam.viessmann-climatesolutions.com/idp/v3/token',
-      headers: {
-        'User-Agent': this.userAgent,
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      data:
-        'grant_type=refresh_token&client_id=' + this.config.client_id + '&refresh_token=' + this.session.refresh_token,
-    })
-      .then((res) => {
-        this.log.debug(JSON.stringify(res.data));
-        this.session = res.data;
-        this.setState('info.connection', true, true);
-        this.scheduleTokenRefresh();
-        return res.data;
-      })
-      .catch((error) => {
-        this.setState('info.connection', false, true);
-        this.logAxiosError('Refresh token request failed', error);
-        this.logResponseData(error);
-        this.log.error('Start relogin in 1min');
-        this.scheduleRelogin();
-      });
+    return authHelpers.refreshToken(this);
   }
   getCodeChallenge() {
-    const chars = '0123456789abcdef';
-    let result = '';
-    for (let i = 64; i > 0; --i) result += chars[Math.floor(Math.random() * chars.length)];
-    let hash = crypto.createHash('sha256').update(result).digest('base64');
-    hash = hash.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-
-    return [result, hash];
+    return authHelpers.getCodeChallenge();
   }
   /**
    * Is called when adapter shuts down - callback has to be called under any circumstances!
