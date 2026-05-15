@@ -27,6 +27,75 @@ const crypto = require('crypto');
 const qs = require('qs');
 const { extractKeys } = require('./lib/extractKeys');
 
+const SENSITIVE_LOG_KEYS = new Set(['authorization', 'access_token', 'refresh_token', 'client_id', 'password', 'code']);
+const REDACTED_LOG_VALUE = '[redacted]';
+
+function sanitizeUrlForLog(value, pathOnly = false) {
+  if (typeof value !== 'string') {
+    return value;
+  }
+
+  try {
+    const parsedUrl = new URL(value);
+    return pathOnly ? parsedUrl.pathname : parsedUrl.origin + parsedUrl.pathname;
+  } catch {
+    const [path] = value.split('?');
+    return path;
+  }
+}
+
+function sanitizeStringForLog(value) {
+  return value
+    .replace(/([?&]?)(access_token|refresh_token|client_id|password|code)=([^&\s"']+)/gi, `$1$2=${REDACTED_LOG_VALUE}`)
+    .replace(/\b(Bearer|Basic)\s+[^\s"']+/gi, `$1 ${REDACTED_LOG_VALUE}`)
+    .replace(/https?:\/\/[^\s"']+/gi, (match) => sanitizeUrlForLog(match));
+}
+
+function sanitizeForLog(value, key = '') {
+  if (value === null || value === undefined) {
+    return value;
+  }
+
+  const normalizedKey = key.toLowerCase();
+  if (SENSITIVE_LOG_KEYS.has(normalizedKey)) {
+    return REDACTED_LOG_VALUE;
+  }
+
+  if (typeof value === 'string') {
+    if (normalizedKey === 'url' || normalizedKey === '_currenturl' || normalizedKey === 'currenturl') {
+      return sanitizeUrlForLog(value, true);
+    }
+    return sanitizeStringForLog(value);
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((entry) => sanitizeForLog(entry));
+  }
+
+  if (typeof value === 'object') {
+    const sanitized = {};
+    for (const [entryKey, entryValue] of Object.entries(value)) {
+      sanitized[entryKey] = sanitizeForLog(entryValue, entryKey);
+    }
+    return sanitized;
+  }
+
+  return value;
+}
+
+function stringifyForLog(value) {
+  if (typeof value === 'string') {
+    return sanitizeStringForLog(value);
+  }
+
+  try {
+    return JSON.stringify(sanitizeForLog(value));
+  } catch {
+    return REDACTED_LOG_VALUE;
+  }
+}
+
+
 class Viessmannapi extends utils.Adapter {
   /**
    * @param {Partial<utils.AdapterOptions>} [options={}]
@@ -58,6 +127,28 @@ class Viessmannapi extends utils.Adapter {
     this.session = {};
     this.rangeMapSupport = {};
     this.gateWayIndexOject = {};
+  }
+
+  logAxiosError(context, error) {
+    const details = {
+      message: error && error.message,
+      method: error && error.config && error.config.method,
+      url: error && error.config && error.config.url,
+      currentUrl: error && error.request && error.request._currentUrl,
+      status: error && error.response && error.response.status,
+      headers: error && error.config && error.config.headers,
+      params: error && error.config && error.config.params,
+      data: error && error.config && error.config.data,
+      response: error && error.response && error.response.data,
+    };
+
+    this.log.error(context + ': ' + stringifyForLog(details));
+  }
+
+  logResponseData(error) {
+    if (error && error.response) {
+      this.log.error(stringifyForLog(error.response.data));
+    }
   }
 
   /**
@@ -136,15 +227,14 @@ class Viessmannapi extends utils.Adapter {
         return res.data;
       })
       .catch((error) => {
-        if (error.request._currentUrl) {
-          this.log.debug(error.request._currentUrl);
+        if (error.request && error.request._currentUrl) {
+          this.log.debug('Authorization redirect path: ' + sanitizeUrlForLog(error.request._currentUrl, true));
           const parsedParams = qs.parse(error.request._currentUrl.split('?')[1]);
           if (parsedParams.code) {
             return parsedParams.code;
           }
-          this.log.error(error.request._currentUrl.split('?')[1]);
         }
-        this.log.error(error);
+        this.logAxiosError('Authorization request failed', error);
         if (error.response) {
           if (error.response.data && error.response.data.error_description === 'Client not registered.') {
             this.log.error(
@@ -152,7 +242,7 @@ class Viessmannapi extends utils.Adapter {
             );
           }
 
-          this.log.error(JSON.stringify(error.response.data));
+          this.log.error(stringifyForLog(error.response.data));
           if (error.response.data.error && error.response.data.error === 'Invalid redirection URI.') {
             this.log.error(
               'Please add / at the end of the redirect URI in viessman app settings: http://localhost:4200/',
@@ -182,13 +272,11 @@ class Viessmannapi extends utils.Adapter {
       })
       .catch((error) => {
         this.setState('info.connection', false, true);
-        this.log.error(error);
+        this.logAxiosError('Token request failed', error);
         if (error.response && error.response.status === 429) {
           this.log.info('Rate limit reached. Will be reseted next day 02:00');
         }
-        if (error.response) {
-          this.log.error(JSON.stringify(error.response.data));
-        }
+        this.logResponseData(error);
       });
   }
   async getDeviceIds() {
@@ -226,11 +314,11 @@ class Viessmannapi extends utils.Adapter {
         }
       })
       .catch((error) => {
-        this.log.error(error);
+        this.logAxiosError('Installations request failed', error);
         if (error.response && error.response.status === 429) {
           this.log.info('Rate limit reached. Will be reseted next day 02:00');
         }
-        error.response && this.log.error(JSON.stringify(error.response.data));
+        this.logResponseData(error);
       });
     for (const installation of this.installationArray) {
       const installationId = installation.id.toString();
@@ -398,7 +486,7 @@ class Viessmannapi extends utils.Adapter {
             })
             .catch((error) => {
               if (error.response && error.response.status === 401) {
-                error.response && this.log.debug(JSON.stringify(error.response.data));
+                error.response && this.log.debug(stringifyForLog(error.response.data));
                 this.log.info(element.path + ' receive 401 error. Refresh Token in 30 seconds');
                 this.refreshTokenTimeout && clearTimeout(this.refreshTokenTimeout);
                 this.refreshTokenTimeout = setTimeout(() => {
@@ -419,15 +507,15 @@ class Viessmannapi extends utils.Adapter {
                 return;
               }
               if (error.response && error.response.status === 502) {
-                this.log.info(JSON.stringify(error.response.data));
+                this.log.info(stringifyForLog(error.response.data));
                 this.log.info('Please check the connection of your gateway');
               }
               if (error.response && error.response.status === 504) {
                 this.log.info('Viessmann API is not available please try again later');
               }
-              this.log.error(url);
-              this.log.error(error);
-              error.response && this.log.error(JSON.stringify(error.response.data));
+              this.log.error('Feature update URL path: ' + sanitizeUrlForLog(url, true));
+              this.logAxiosError('Feature update request failed', error);
+              this.logResponseData(error);
             });
         }
       }
@@ -475,7 +563,7 @@ class Viessmannapi extends utils.Adapter {
         })
         .catch((error) => {
           if (error.response && error.response.status === 401) {
-            error.response && this.log.debug(JSON.stringify(error.response.data));
+            error.response && this.log.debug(stringifyForLog(error.response.data));
 
             this.log.info('Get Events receive 401 error. Refresh Token in 30 seconds');
             this.refreshTokenTimeout && clearTimeout(this.refreshTokenTimeout);
@@ -489,15 +577,14 @@ class Viessmannapi extends utils.Adapter {
             this.log.info('Rate limit reached. Will be reseted next day 02:00');
           }
           if (error.response && error.response.status === 502) {
-            this.log.info(JSON.stringify(error.response.data));
+            this.log.info(stringifyForLog(error.response.data));
             this.log.info('Please check the connection of your gateway');
           }
           if (error.response && error.response.status === 504) {
             this.log.info('Viessmann API is not available please try again later');
           }
-          this.log.error('Receiving Events');
-          this.log.error(error);
-          error.response && this.log.debug(JSON.stringify(error.response.data));
+          this.logAxiosError('Receiving events failed', error);
+          error.response && this.log.debug(stringifyForLog(error.response.data));
         });
     }
   }
@@ -521,9 +608,8 @@ class Viessmannapi extends utils.Adapter {
       })
       .catch((error) => {
         this.setState('info.connection', false, true);
-        this.log.error('refresh token failed');
-        this.log.error(error);
-        error.response && this.log.error(JSON.stringify(error.response.data));
+        this.logAxiosError('Refresh token request failed', error);
+        this.logResponseData(error);
         this.log.error('Start relogin in 1min');
         this.reLoginTimeout = setTimeout(() => {
           this.login();
@@ -602,7 +688,7 @@ class Viessmannapi extends utils.Adapter {
                 }
               }
             } catch (error) {
-              this.log.error(error);
+              this.log.error(stringifyForLog(error));
               this.log.info(`Please use a valid JSON: {"slope": x, "shift": y}`);
             }
           }
@@ -635,7 +721,7 @@ class Viessmannapi extends utils.Adapter {
             onRetryAttempt: (error) => {
               const cfg = rax.getConfig(error);
               if (error.response) {
-                this.log.error(JSON.stringify(error.response.data));
+                this.log.error(stringifyForLog(error.response.data));
               }
               cfg && this.log.info(`Retry attempt #${cfg.currentRetryAttempt}`);
             },
@@ -646,10 +732,8 @@ class Viessmannapi extends utils.Adapter {
             return res.data;
           })
           .catch((error) => {
-            this.log.error(error);
-            if (error.response) {
-              this.log.error(JSON.stringify(error.response.data));
-            }
+            this.logAxiosError('Command request failed', error);
+            this.logResponseData(error);
             if (
               error.response &&
               error.response.data &&
@@ -659,8 +743,8 @@ class Viessmannapi extends utils.Adapter {
               this.log.error('Command not exist please. Please delete objects manually and restart the adapter');
               return;
             }
-            this.log.error('URL: ' + uriState.val);
-            this.log.error('Data: ' + JSON.stringify(data));
+            this.log.error('URL path: ' + sanitizeUrlForLog(uriState.val, true));
+            this.log.error('Data: ' + stringifyForLog(data));
           });
         this.refreshTimeout = setTimeout(async () => {
           await this.updateDevices();
