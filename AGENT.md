@@ -10,6 +10,7 @@
 - **License:** MIT
 - **Original author:** TA2k
 - **Current maintainer:** riessfa
+- **Fork status:** Maintained fork of `TA2k/ioBroker.viessmannapi`; preserve npm package name for ioBroker compatibility.
 
 ## Architecture and Key Files
 
@@ -73,7 +74,7 @@ cd ioBroker.viessmannapi
 npm ci
 ```
 
-- **Node.js >=20 <25** required (see `engines` in package.json)
+- **Node.js >=20 <25** required (see `engines` in package.json); CI covers Node.js 20, 22, and 24.
 - No build step — JavaScript source runs directly
 - TypeScript is used only for type checking, not compilation
 
@@ -259,5 +260,5 @@ npm ci
 
 ### Platform Requirements
 - Node.js >=20 <25
-- js-controller >= 6.0.11
-- admin >= 7.6.20
+- js-controller >= 7.0.7
+- admin >= 7.7.2

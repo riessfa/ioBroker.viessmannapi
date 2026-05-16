@@ -1,19 +1,18 @@
 {
   "name": "iobroker.viessmannapi",
   "version": "2.5.0",
-  "description": "Adapter for Viessmannapi",
+  "description": "Maintained fork of the ioBroker adapter for Viessmann Developer Cloud API",
   "author": {
-    "name": "TA2k",
-    "email": "tombox2020@gmail.com"
+    "name": "riessfa"
   },
-  "homepage": "https://github.com/TA2k/ioBroker.viessmannapi",
+  "homepage": "https://github.com/riessfa/ioBroker.viessmannapi",
   "license": "MIT",
   "keywords": [
     "Viessmannapi"
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/TA2k/ioBroker.viessmannapi.git"
+    "url": "git+https://github.com/riessfa/ioBroker.viessmannapi.git"
   },
   "dependencies": {
     "@iobroker/adapter-core": "^3.3.2",
@@ -47,10 +46,16 @@
     "release": "release-script --all"
   },
   "bugs": {
-    "url": "https://github.com/TA2k/ioBroker.viessmannapi/issues"
+    "url": "https://github.com/riessfa/ioBroker.viessmannapi/issues"
   },
   "readmeFilename": "README.md",
   "engines": {
     "node": ">=20 <25"
-  }
+  },
+  "contributors": [
+    {
+      "name": "TA2k",
+      "email": "tombox2020@gmail.com"
+    }
+  ]
 }

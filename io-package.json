@@ -4,8 +4,8 @@
     "version": "2.5.0",
     "news": {
       "2.5.0": {
-        "en": "Improve authentication failure handling, retry behavior, safe logging checks, and request flow test coverage",
-        "de": "Verbesserte Behandlung von Authentifizierungsfehlern, Retry-Verhalten, Safe-Logging-Prüfungen und Testabdeckung der Request-Flows"
+        "en": "Mark maintained fork, update documentation, and document current runtime requirements, authentication handling, retry behavior, safe logging, and request-flow tests",
+        "de": "Fork-Kennzeichnung ergänzt, Dokumentation aktualisiert und aktuelle Laufzeit-Anforderungen, Authentifizierung, Retry-Verhalten, sichere Logs und Request-Flow-Tests dokumentiert"
       },
       "2.4.5": {
         "en": "remove logbook from objects",
@@ -105,15 +105,20 @@
       "pl": "Adapter do urządzeń Viessmannapi z Vitoconnect Box",
       "zh-cn": "带有 Vitoconnect 盒的 Viessmannapi 设备适配器"
     },
-    "authors": ["TA2k <tombox2020@gmail.com>"],
-    "keywords": ["Viessmannapi"],
+    "authors": [
+      "riessfa",
+      "TA2k <tombox2020@gmail.com>"
+    ],
+    "keywords": [
+      "Viessmannapi"
+    ],
     "license": "MIT",
     "platform": "Javascript/Node.js",
     "main": "main.js",
     "icon": "viessmannapi.png",
     "enabled": true,
-    "extIcon": "https://raw.githubusercontent.com/TA2k/ioBroker.viessmannapi/master/admin/viessmannapi.png",
-    "readme": "https://github.com/TA2k/ioBroker.viessmannapi/blob/master/README.md",
+    "extIcon": "https://raw.githubusercontent.com/riessfa/ioBroker.viessmannapi/master/admin/viessmannapi.png",
+    "readme": "https://github.com/riessfa/ioBroker.viessmannapi/blob/master/README.md",
     "loglevel": "info",
     "mode": "daemon",
     "type": "climate-control",
@@ -137,8 +142,14 @@
       }
     ]
   },
-  "encryptedNative": ["client_id", "password"],
-  "protectedNative": ["client_id", "password"],
+  "encryptedNative": [
+    "client_id",
+    "password"
+  ],
+  "protectedNative": [
+    "client_id",
+    "password"
+  ],
   "native": {
     "username": "",
     "password": "",
