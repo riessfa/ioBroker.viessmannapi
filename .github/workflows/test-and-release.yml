@@ -5,13 +5,16 @@ name: Test and Release
 on:
   push:
     branches:
-      - '*'
+      - '**'
     tags:
       # normal versions
       - 'v[0-9]+.[0-9]+.[0-9]+'
       # pre-releases
       - 'v[0-9]+.[0-9]+.[0-9]+-**'
-  pull_request: {}
+  pull_request:
+    branches:
+      - '**'
+  workflow_dispatch: {}
 
 # Cancel previous PR/branch runs when a new commit is pushed
 concurrency:
@@ -21,7 +24,7 @@ concurrency:
 jobs:
   # Performs quick checks before the expensive test runs
   check-and-lint:
-    if: contains(github.event.head_commit.message, '[skip ci]') == false
+    if: ${{ !contains(github.event.head_commit.message || '', '[skip ci]') }}
 
     runs-on: ubuntu-latest
 
@@ -33,11 +36,27 @@ jobs:
           # install-command: 'npm install'
           lint: true
 
+
+  # Audits the full dependency tree so dependency security issues are visible in CI
+  dependency-audit:
+    if: ${{ !contains(github.event.head_commit.message || '', '[skip ci]') }}
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+          cache: npm
+      - run: npm ci
+      - run: npm audit --audit-level=moderate
+
   # Runs adapter tests on all supported node versions and OSes
   adapter-tests:
-    if: contains(github.event.head_commit.message, '[skip ci]') == false
+    if: ${{ !contains(github.event.head_commit.message || '', '[skip ci]') }}
 
-    needs: check-and-lint
+    needs: [check-and-lint, dependency-audit]
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
