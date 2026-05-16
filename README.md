@@ -1,146 +1,387 @@
-![Logo](admin/viessmannapi.png)
-
 # ioBroker.viessmannapi
 
-[![NPM version](https://img.shields.io/npm/v/iobroker.viessmannapi.svg)](https://www.npmjs.com/package/iobroker.viessmannapi)
-[![Downloads](https://img.shields.io/npm/dm/iobroker.viessmannapi.svg)](https://www.npmjs.com/package/iobroker.viessmannapi)
-![Number of Installations (latest)](https://iobroker.live/badges/viessmannapi-installed.svg)
-![Number of Installations (stable)](https://iobroker.live/badges/viessmannapi-stable.svg)
-[![Dependency Status](https://img.shields.io/david/TA2k/iobroker.viessmannapi.svg)](https://david-dm.org/TA2k/iobroker.viessmannapi)
+> **Maintained fork notice:** This repository is a maintained fork of the original `TA2k/ioBroker.viessmannapi` adapter. The adapter name and npm package stay `iobroker.viessmannapi` for ioBroker compatibility, while this fork continues maintenance, dependency updates, and compatibility work.
 
-[![NPM](https://nodei.co/npm/iobroker.viessmannapi.png?downloads=true)](https://nodei.co/npm/iobroker.viessmannapi/)
+## Deutsch
 
-**Tests:** ![Test and Release](https://github.com/TA2k/ioBroker.viessmannapi/workflows/Test%20and%20Release/badge.svg)
+## Überblick
 
-## viessmannapi adapter for ioBroker
+`ioBroker.viessmannapi` verbindet ioBroker mit der Viessmann Developer Cloud API. Der Adapter liest Installationen, Gateways, Geräte, Features, Events und Messwerte aus und legt sie als ioBroker-Objekte und States an. Schreibbare Viessmann-Befehle werden als `setValue`-States abgebildet, sodass sie aus Visualisierungen, Skripten oder Automationen heraus genutzt werden können.
 
-Adapter for Viessmannapi
+Typische Einsatzzwecke:
 
-## Requirements
+- Heizung, Warmwasser, Wärmepumpe, Lüftung und weitere Viessmann-Features überwachen.
+- Temperaturen, Betriebsarten, Programme, Statistiken und Statusinformationen in ioBroker protokollieren.
+- Unterstützte Remote-Befehle über Viessmann Command-Endpoints ausführen.
+- API-Aufrufe durch Geräte- und Feature-Filter reduzieren.
 
-- Node.js 20, 22, or 24. These are the runtime versions covered by the CI matrix.
-- js-controller 6.0.11 or newer.
-- admin 7.6.20 or newer.
+## Fork-Status
 
-**Man benötigt eine ClientID von der Viessmann API**
-https://app.developer.viessmann-climatesolutions.com/ besuchen und eine Client ID mit diesen Optionen erstellen:
+Diese Version ist als Fork gekennzeichnet und wird unabhängig vom ursprünglichen Repository gepflegt. Die Historie und der Ursprung bleiben erhalten; neue Änderungen in diesem Fork konzentrieren sich auf aktuelle Laufzeit-Anforderungen, sichere Protokollierung, robustere Authentifizierung, Tests und Dokumentation.
 
-Name: iobroker
+## Aktuelle Version
 
-**Google reCAPTCHA deaktivieren**
+### 2.5.0
 
-URI: http://localhost:4200/
+Release-Schwerpunkte:
 
-Die Client ID in die Einstellungen kopieren
+- Verbesserte Behandlung von Authentifizierungsfehlern und Token-Erneuerung.
+- Klareres Retry-Verhalten für API-Kommandos.
+- Zusätzliche Tests für Request-Flows, Authentifizierung und sichere Log-Ausgaben.
+- Aktualisierte Projektanforderungen für moderne ioBroker-Installationen.
+- Aktualisierte Dokumentation mit deutschem und englischem Abschnitt.
 
-**Außentemperatur findet sich z.B. hier:
-viessmannapi.0.XXXXX.0.features.heating.sensors.temperature.outside.properties.value.value**
+## Anforderungen
 
-**Remote Befehle sind möglich unter
-viessmannapi.0.XXXXX.0.features.heating.dhw.temperature.main.commands.setTargetTemperature.setValue**
+- Node.js `>=20 <25` (Node.js 20, 22 und 24 werden von der CI-Matrix abgedeckt).
+- js-controller `>=7.0.7`.
+- admin `>=7.7.2`.
+- Eine Viessmann Developer App mit OAuth Client ID.
+- Eine unterstützte Viessmann-Anlage bzw. ein unterstütztes Gateway/Gerät in der Viessmann Cloud.
 
-**Kompatibilitätsliste**:
-https://documentation.viessmann.com/static/compatibility
+## Installation und Einrichtung
 
-**Regelungen für Wand- oder Kompaktgeräte**
+1. Adapter in ioBroker installieren oder diesen Fork als GitHub-/npm-Quelle verwenden.
+2. Viessmann Developer App öffnen: <https://app.developer.viessmann-climatesolutions.com/>.
+3. Eine Client ID für den Adapter erstellen.
+4. In der Viessmann Developer App Google reCAPTCHA deaktivieren.
+5. Redirect URI eintragen: `http://localhost:4200/`.
+6. Client ID in den Adapter-Einstellungen eintragen.
+7. Viessmann Benutzername und Passwort in den Adapter-Einstellungen eintragen.
+8. Optional Filter konfigurieren, um API-Limits zu schonen.
 
-Vitotronic 200, Typ HO1, HO1A, HO1B, HO1D, HO2B, HO2C
-Vitotronic 200 RF, Typ HO1C, HO1E
+## Adapter-Konfiguration
 
-**Regelungen für bodenstehende Heizkessel**
+| Einstellung | Standard | Beschreibung |
+| --- | --- | --- |
+| `username` | leer | Viessmann Account-E-Mail. |
+| `password` | leer | Viessmann Account-Passwort; wird von ioBroker geschützt gespeichert. |
+| `client_id` | leer | OAuth Client ID aus der Viessmann Developer App; wird geschützt gespeichert. |
+| `interval` | `5` | Polling-Intervall für Features in Minuten. |
+| `eventInterval` | `300` | Polling-Intervall für Events in Minuten. |
+| `gatewayIndex` | `1` | Gateway-Auswahl, falls mehrere Gateways vorhanden sind. |
+| `devicelist` | leer | Kommagetrennte Allowlist für Device IDs. |
+| `featureFilter` | leer | Kommagetrennter Feature-Filter; Wildcard `*` wird unterstützt. |
+| `allowVirtual` | `false` | Virtuelle Geräte, z. B. Einzelraumsteuerungen, einbeziehen. |
 
-Vitotronic 200, Typ KO1B, KO2B, KW6, KW6A, KW6B, KW1, KW2, KW4, KW5
-Vitotronic 300, Typ KW3
+## API-Limits und Empfehlungen
 
-**Regelungen für Wärmepumpen und Hybridgeräte**
+Die Viessmann API hat Tageslimits. Konfigurieren Sie den Adapter so, dass nur benötigte Geräte und Features abgefragt werden:
 
-Vitotronic 200, Typ WO1A, WO1B, WO1C
+- Polling-Intervall nicht unnötig klein setzen.
+- `devicelist` verwenden, wenn nur bestimmte Geräte relevant sind.
+- `featureFilter` verwenden, z. B. `heating.boiler.*` oder `heating.dhw.temperature`.
+- Virtuelle Geräte nur aktivieren, wenn sie wirklich benötigt werden.
 
-**Regelungen für Festbrennstoffkessel**
+## Beispiele für Datenpunkte
 
-Vitoligno 200-S mit Ecotronic (ab Softwarestand 2.03)
-Vitoligno 250-S mit Ecotronic (ab Softwarestand 2.00)
-Vitoligno 300-C mit Ecotronic (ab Softwarestand 2.12)
-Vitoligno 300-P mit Vitotronic 200 FO1
-Vitoligno 300-S mit Ecotronic (ab Softwarestand 2.04)
+Außentemperatur:
 
-**Liste aller Datenpunkte:
-https://documentation.viessmann.com/static/iot/data-points**
-
-**Frage zu fehlende Datenpunkte bitte direkt an Viessmann
-https://www.viessmann-community.com/t5/The-Viessmann-API/bd-p/dev-viessmann-api**
-
-Beispiele:
-
+```text
+viessmannapi.0.XXXXX.0.features.heating.sensors.temperature.outside.properties.value.value
 ```
+
+Remote-Befehl für Warmwasser-Zieltemperatur:
+
+```text
+viessmannapi.0.XXXXX.0.features.heating.dhw.temperature.main.commands.setTargetTemperature.setValue
+```
+
+Weitere häufige Datenpunkte:
+
+```text
 Vorlauftemperatur:
-viessmannapi.0.XXXX.features.heating.circuits.0.sensors.temperature.supply.properties.value.value,
+viessmannapi.0.XXXX.features.heating.circuits.0.sensors.temperature.supply.properties.value.value
 
 Anzahl Zündungen:
 viessmannapi.0.XXXXX.features.heating.burners.0.statistics.properties.starts.value
 
-Betriebsstunden
+Betriebsstunden:
 viessmannapi.0.XXXXX.features.heating.burners.0.statistics.properties.hours.value
 
-Kesseltemperatur
+Kesseltemperatur:
 viessmannapi.0.XXXXX.features.heating.boiler.sensors.temperature.main.properties.unit.value
 
-Kompressor aktiv:		viessmannapi.0.xxx.0.features.heating.compressors.0.properties.active.value
-Heizkreispumpe aktiv:		viessmannapi.0.xxx.0.features.heating.circuits.1.circulation.pump.properties.status.value
-Warmwasserbereitung:		viessmannapi.0.xxx.0.features.heating.dhw.charging.properties.active.value
-Heizungsmodus:			viessmannapi.0.xxx.0.features.heating.circuits.1.operating.modes.active.properties.value.value
-Heizprogramm:			viessmannapi.0.xxx.0.features.heating.circuits.1.operating.programs.active.properties.value.value
-Temperatur Heizprogramm normal:	viessmannapi.0.xxx.0.features.heating.circuits.1.operating.programs.normal.properties.temperature.value
-Temperatur Heizprogramm reduz.:	viessmannapi.0.xxx.0.features.heating.circuits.1.operating.programs.reduced.properties.temperature.value
-Warmwasser Soll Temperatur:	viessmannapi.0.xxx.0.features.heating.dhw.temperature.properties.value.value
-Warmwasser Ist Temperatur:	viessmannapi.0.xxx.0.features.heating.dhw.sensors.temperature.dhwCylinder.properties.value.value
-Temperatur Außensensor:		viessmannapi.0.xxx.0.features.heating.sensors.temperature.outside.properties.value.value
-Statistik Kompressor Starts:	viessmannapi.0.xxx.0.features.heating.compressors.0.statistics.properties.starts.value
-Statistik Kompressor Stunden:	viessmannapi.0.xxx.0.features.heating.compressors.0.statistics.properties.hours.value
-Temperatursensoren der Heizkreise:   viessmannapi.0.xxxxxxx.0.features.heating.circuits.0.sensors.temperature.supply.properties.value.value
+Kompressor aktiv:
+viessmannapi.0.xxx.0.features.heating.compressors.0.properties.active.value
 
-Primärkreis Vorlauftemperatur:		viessmann.0.xxx.0.features.heating.primaryCircuit.sensors.temperature.supply.properties.value.value
-Sekundärkreis Vorlauftemperatur:	viessmann.0.xxx.0.features.heating.secondaryCircuit.sensors.temperature.supply.properties.value.value
-Sekundärkreis Rücklauftemperatur:	viessmann.0.xxx.0.features.heating.secondaryCircuit.sensors.temperature.return.properties.value.value
-?					viessmann.0.xxx.0.features.heating.sensors.temperature.return.properties.value.value
+Heizkreispumpe aktiv:
+viessmannapi.0.xxx.0.features.heating.circuits.1.circulation.pump.properties.status.value
 
+Warmwasserbereitung:
+viessmannapi.0.xxx.0.features.heating.dhw.charging.properties.active.value
+
+Heizungsmodus:
+viessmannapi.0.xxx.0.features.heating.circuits.1.operating.modes.active.properties.value.value
+
+Heizprogramm:
+viessmannapi.0.xxx.0.features.heating.circuits.1.operating.programs.active.properties.value.value
+
+Warmwasser Soll-Temperatur:
+viessmannapi.0.xxx.0.features.heating.dhw.temperature.properties.value.value
+
+Warmwasser Ist-Temperatur:
+viessmannapi.0.xxx.0.features.heating.dhw.sensors.temperature.dhwCylinder.properties.value.value
+
+Statistik Kompressor Starts:
+viessmannapi.0.xxx.0.features.heating.compressors.0.statistics.properties.starts.value
+
+Statistik Kompressor Stunden:
+viessmannapi.0.xxx.0.features.heating.compressors.0.statistics.properties.hours.value
 ```
 
-**Beispiel zum setzen eines Schedule:**
+## Beispiel: Schedule setzen
 
-```
-var standard = '{"mon":[{"start":"00:00","end":"24:00","mode":"standard","position":0}],"tue":[{"start":"00:00","end":"24:00","mode":"standard","position":0}],\
-              "wed":[{"start":"00:00","end":"24:00","mode":"standard","position":0}],"thu":[{"start":"00:00","end":"24:00","mode":"standard","position":0}],\
-              "fri":[{"start":"00:00","end":"24:00","mode":"standard","position":0}],"sat":[{"start":"00:00","end":"24:00","mode":"standard","position":0}],\
-              "sun":[{"start":"00:00","end":"24:00","mode":"standard","position":0}]}'
+```javascript
+const standard = {
+  mon: [{ start: '00:00', end: '24:00', mode: 'standard', position: 0 }],
+  tue: [{ start: '00:00', end: '24:00', mode: 'standard', position: 0 }],
+  wed: [{ start: '00:00', end: '24:00', mode: 'standard', position: 0 }],
+  thu: [{ start: '00:00', end: '24:00', mode: 'standard', position: 0 }],
+  fri: [{ start: '00:00', end: '24:00', mode: 'standard', position: 0 }],
+  sat: [{ start: '00:00', end: '24:00', mode: 'standard', position: 0 }],
+  sun: [{ start: '00:00', end: '24:00', mode: 'standard', position: 0 }],
+};
 
-setState("viessmannapi.0.xxxxxxx.0.features.ventilation.schedule.commands.setSchedule.setValue", JSON.parse(standard));
+setState('viessmannapi.0.xxxxxxx.0.features.ventilation.schedule.commands.setSchedule.setValue', standard);
 ```
+
+## Unterstützte Geräte und Datenpunkte
+
+Viessmann stellt die aktuellen Kompatibilitäts- und Datenpunktlisten bereit:
+
+- Kompatibilitätsliste: <https://documentation.viessmann.com/static/compatibility>
+- Datenpunkte: <https://documentation.viessmann.com/static/iot/data-points>
+- API-Community: <https://www.viessmann-community.com/t5/The-Viessmann-API/bd-p/dev-viessmann-api>
+
+Fragen zu fehlenden Datenpunkten bitte direkt an Viessmann richten, da der Adapter nur die von der Viessmann API gelieferten Features abbilden kann.
+
+## Entwicklung
+
+```bash
+npm ci
+npm run lint
+npm run check
+npm run test
+```
+
+Wichtige Skripte:
+
+| Befehl | Zweck |
+| --- | --- |
+| `npm run lint` | ESLint-Prüfung. |
+| `npm run check` | TypeScript-Check ohne Build-Ausgabe. |
+| `npm run test:js` | Mocha-Tests für Adapterlogik. |
+| `npm run test:package` | ioBroker Package-Validierung. |
+| `npm run test` | Führt `test:js` und `test:package` aus. |
+
+---
+
+## English
+
+## Overview
+
+`ioBroker.viessmannapi` connects ioBroker with the Viessmann Developer Cloud API. The adapter discovers installations, gateways, devices, features, events, and measurements, then exposes them as ioBroker objects and states. Writable Viessmann commands are represented as `setValue` states for use in scripts, automations, and visualizations.
+
+Common use cases:
+
+- Monitor heating, domestic hot water, heat pumps, ventilation, and other Viessmann features.
+- Log temperatures, operating modes, programs, statistics, and status information in ioBroker.
+- Execute supported remote commands through Viessmann command endpoints.
+- Reduce API traffic with device and feature filters.
+
+## Fork status
+
+This repository is a maintained fork of the original project. The project history and origin are preserved, while this fork focuses on current runtime requirements, safer logging, more robust authentication, tests, and documentation updates.
+
+## Current release
+
+### 2.5.0
+
+Release highlights:
+
+- Improved authentication failure handling and token refresh behavior.
+- Clearer retry behavior for API commands.
+- Additional tests for request flows, authentication, and safe log output.
+- Updated project requirements for modern ioBroker installations.
+- Updated documentation with German and English sections.
+
+## Requirements
+
+- Node.js `>=20 <25` (Node.js 20, 22, and 24 are covered by the CI matrix).
+- js-controller `>=7.0.7`.
+- admin `>=7.7.2`.
+- A Viessmann Developer App with an OAuth Client ID.
+- A supported Viessmann installation or gateway/device connected to the Viessmann Cloud.
+
+## Installation and setup
+
+1. Install the adapter in ioBroker or use this fork as a GitHub/npm source.
+2. Open the Viessmann Developer App: <https://app.developer.viessmann-climatesolutions.com/>.
+3. Create a Client ID for the adapter.
+4. Disable Google reCAPTCHA for the app.
+5. Configure the redirect URI: `http://localhost:4200/`.
+6. Copy the Client ID into the adapter settings.
+7. Enter your Viessmann username and password in the adapter settings.
+8. Optionally configure filters to reduce API usage.
+
+## Adapter configuration
+
+| Setting | Default | Description |
+| --- | --- | --- |
+| `username` | empty | Viessmann account email. |
+| `password` | empty | Viessmann account password; stored protected by ioBroker. |
+| `client_id` | empty | OAuth Client ID from the Viessmann Developer App; stored protected. |
+| `interval` | `5` | Feature polling interval in minutes. |
+| `eventInterval` | `300` | Event polling interval in minutes. |
+| `gatewayIndex` | `1` | Gateway selection when multiple gateways exist. |
+| `devicelist` | empty | Comma-separated allowlist for device IDs. |
+| `featureFilter` | empty | Comma-separated feature filter; wildcard `*` is supported. |
+| `allowVirtual` | `false` | Include virtual devices, such as room controls. |
+
+## API limits and recommendations
+
+The Viessmann API has daily limits. Configure the adapter to poll only the devices and features you need:
+
+- Do not set polling intervals lower than necessary.
+- Use `devicelist` when only selected devices are relevant.
+- Use `featureFilter`, for example `heating.boiler.*` or `heating.dhw.temperature`.
+- Enable virtual devices only when you actually need them.
+
+## Data point examples
+
+Outside temperature:
+
+```text
+viessmannapi.0.XXXXX.0.features.heating.sensors.temperature.outside.properties.value.value
+```
+
+Remote command for domestic hot water target temperature:
+
+```text
+viessmannapi.0.XXXXX.0.features.heating.dhw.temperature.main.commands.setTargetTemperature.setValue
+```
+
+Additional common data points:
+
+```text
+Supply temperature:
+viessmannapi.0.XXXX.features.heating.circuits.0.sensors.temperature.supply.properties.value.value
+
+Burner starts:
+viessmannapi.0.XXXXX.features.heating.burners.0.statistics.properties.starts.value
+
+Burner operating hours:
+viessmannapi.0.XXXXX.features.heating.burners.0.statistics.properties.hours.value
+
+Boiler temperature:
+viessmannapi.0.XXXXX.features.heating.boiler.sensors.temperature.main.properties.unit.value
+
+Compressor active:
+viessmannapi.0.xxx.0.features.heating.compressors.0.properties.active.value
+
+Heating circuit pump active:
+viessmannapi.0.xxx.0.features.heating.circuits.1.circulation.pump.properties.status.value
+
+Domestic hot water charging:
+viessmannapi.0.xxx.0.features.heating.dhw.charging.properties.active.value
+
+Heating mode:
+viessmannapi.0.xxx.0.features.heating.circuits.1.operating.modes.active.properties.value.value
+
+Heating program:
+viessmannapi.0.xxx.0.features.heating.circuits.1.operating.programs.active.properties.value.value
+
+Domestic hot water target temperature:
+viessmannapi.0.xxx.0.features.heating.dhw.temperature.properties.value.value
+
+Domestic hot water actual temperature:
+viessmannapi.0.xxx.0.features.heating.dhw.sensors.temperature.dhwCylinder.properties.value.value
+
+Compressor starts statistic:
+viessmannapi.0.xxx.0.features.heating.compressors.0.statistics.properties.starts.value
+
+Compressor hours statistic:
+viessmannapi.0.xxx.0.features.heating.compressors.0.statistics.properties.hours.value
+```
+
+## Example: setting a schedule
+
+```javascript
+const standard = {
+  mon: [{ start: '00:00', end: '24:00', mode: 'standard', position: 0 }],
+  tue: [{ start: '00:00', end: '24:00', mode: 'standard', position: 0 }],
+  wed: [{ start: '00:00', end: '24:00', mode: 'standard', position: 0 }],
+  thu: [{ start: '00:00', end: '24:00', mode: 'standard', position: 0 }],
+  fri: [{ start: '00:00', end: '24:00', mode: 'standard', position: 0 }],
+  sat: [{ start: '00:00', end: '24:00', mode: 'standard', position: 0 }],
+  sun: [{ start: '00:00', end: '24:00', mode: 'standard', position: 0 }],
+};
+
+setState('viessmannapi.0.xxxxxxx.0.features.ventilation.schedule.commands.setSchedule.setValue', standard);
+```
+
+## Supported devices and data points
+
+Viessmann provides the current compatibility and data point references:
+
+- Compatibility list: <https://documentation.viessmann.com/static/compatibility>
+- Data points: <https://documentation.viessmann.com/static/iot/data-points>
+- API community: <https://www.viessmann-community.com/t5/The-Viessmann-API/bd-p/dev-viessmann-api>
+
+Questions about missing data points should be directed to Viessmann because the adapter can only expose features returned by the Viessmann API.
+
+## Development
+
+```bash
+npm ci
+npm run lint
+npm run check
+npm run test
+```
+
+Important scripts:
+
+| Command | Purpose |
+| --- | --- |
+| `npm run lint` | Run ESLint. |
+| `npm run check` | Run TypeScript checking without build output. |
+| `npm run test:js` | Run Mocha tests for adapter logic. |
+| `npm run test:package` | Run ioBroker package validation. |
+| `npm run test` | Run `test:js` and `test:package`. |
 
 ## Changelog
+
+### 2.5.0 (2026-05-16)
+
+- Mark repository as a maintained fork.
+- Update runtime requirements to Node.js `>=20 <25`, js-controller `>=7.0.7`, and admin `>=7.7.2`.
+- Document authentication, retry, safe logging, request-flow test coverage, and project-maintenance updates.
+- Rework README into German and English sections without embedded images.
+
 ### 2.4.5 (2026-05-01)
 
-- remove logbook from objects
+- Remove logbook from objects.
 
 ### 2.4.4 (2025-12-16)
 
-- fix for depreacted endpoint
+- Fix deprecated endpoint usage.
 
 ### 2.4.3 (2025-08-10)
 
-- fix for new role preventing data update
+- Fix new role preventing data updates.
 
 ### 2.4.2 (2025-07-11)
 
-- change api host name
+- Change API host name.
 
 ### 2.4.1 (2025-03-31)
 
-- Update to new viessmann api
+- Update to new Viessmann API.
 
 ### 2.3.2
 
-- (TA2k) Fix Login flow
+- Fix login flow.
 
 ## License
 
