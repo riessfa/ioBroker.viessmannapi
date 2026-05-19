@@ -582,6 +582,74 @@ describe('Viessmannapi auth failure paths', () => {
   });
 });
 
+describe('Viessmannapi wrapped callback handling', () => {
+  it('logs and swallows updateDevices interval callback errors', async () => {
+    const timers = useFakeTimers();
+    try {
+      const adapter = createAdapter();
+      const errors = [];
+      adapter.log = { debug: noop, info: noop, warn: noop, error: (msg) => errors.push(String(msg)) };
+      adapter.config = { interval: 1, eventInterval: 5 };
+      adapter.subscribeStates = noop;
+      adapter.getAdapterObjectsAsync = async () => ({});
+      adapter.delObjectAsync = async () => {};
+      adapter.login = async () => {
+        adapter.session = { access_token: 'token', expires_in: 3600 };
+      };
+      adapter.getDeviceIds = async () => {};
+      adapter.getEvents = async () => {};
+      let updateCalls = 0;
+      adapter.updateDevices = async () => {
+        updateCalls += 1;
+        if (updateCalls > 1) {
+          throw new Error('boom update');
+        }
+      };
+      adapter.scheduleTokenRefresh = noop;
+
+      await adapter.onReady();
+      await timers.intervals[0].callback();
+
+      expect(errors.some((line) => line.includes('updateDevices interval failed: boom update'))).to.equal(true);
+    } finally {
+      timers.restore();
+    }
+  });
+
+  it('logs and swallows getEvents interval callback errors', async () => {
+    const timers = useFakeTimers();
+    try {
+      const adapter = createAdapter();
+      const errors = [];
+      adapter.log = { debug: noop, info: noop, warn: noop, error: (msg) => errors.push(String(msg)) };
+      adapter.config = { interval: 1, eventInterval: 5 };
+      adapter.subscribeStates = noop;
+      adapter.getAdapterObjectsAsync = async () => ({});
+      adapter.delObjectAsync = async () => {};
+      adapter.login = async () => {
+        adapter.session = { access_token: 'token', expires_in: 3600 };
+      };
+      adapter.getDeviceIds = async () => {};
+      adapter.updateDevices = async () => {};
+      let eventCalls = 0;
+      adapter.getEvents = async () => {
+        eventCalls += 1;
+        if (eventCalls > 1) {
+          throw new Error('boom events');
+        }
+      };
+      adapter.scheduleTokenRefresh = noop;
+
+      await adapter.onReady();
+      await timers.intervals[1].callback();
+
+      expect(errors.some((line) => line.includes('getEvents interval failed: boom events'))).to.equal(true);
+    } finally {
+      timers.restore();
+    }
+  });
+});
+
 describe('Viessmannapi retry handling', () => {
   afterEach(() => {
     delete require.cache[require.resolve('./main')];
