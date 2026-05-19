@@ -21,7 +21,7 @@ Diese Version ist als Fork gekennzeichnet und wird unabhängig vom ursprünglich
 
 ## Aktuelle Version
 
-### 2.5.0
+### 2.5.1
 
 Release-Schwerpunkte:
 
@@ -196,7 +196,7 @@ This repository is a maintained fork of the original project. The project histor
 
 ## Current release
 
-### 2.5.0
+### 2.5.1
 
 Release highlights:
 
@@ -351,6 +351,12 @@ Important scripts:
 | `npm run test` | Run `test:js` and `test:package`. |
 
 ## Changelog
+
+### 2.5.1 (2026-05-19)
+
+- Added contribution and troubleshooting guides for this maintained fork.
+- Expanded JSDoc coverage in `lib` helpers to improve editor hints and static checks.
+- Added test coverage for wrapped callback error handling in auth scheduling.
 
 ### 2.5.0 (2026-05-16)
 
