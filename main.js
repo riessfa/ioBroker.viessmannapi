@@ -118,11 +118,19 @@ class Viessmannapi extends utils.Adapter {
       await this.getEvents();
       this.clearPollingTimers();
       this.updateInterval = setInterval(async () => {
-        await this.updateDevices();
+        try {
+          await this.updateDevices();
+        } catch (e) {
+          this.log.error('updateDevices interval failed: ' + (e && e.message ? e.message : e));
+        }
       }, this.config.interval * 60 * 1000);
 
       this.eventInterval = setInterval(async () => {
-        await this.getEvents();
+        try {
+          await this.getEvents();
+        } catch (e) {
+          this.log.error('getEvents interval failed: ' + (e && e.message ? e.message : e));
+        }
       }, this.config.eventInterval * 60 * 1000);
 
       this.scheduleTokenRefresh();
@@ -761,7 +769,11 @@ class Viessmannapi extends utils.Adapter {
             this.log.error('Data: ' + stringifyForLog(data));
           });
         this.refreshTimeout = setTimeout(async () => {
-          await this.updateDevices();
+          try {
+            await this.updateDevices();
+          } catch (e) {
+            this.log.error('refresh updateDevices failed: ' + (e && e.message ? e.message : e));
+          }
         }, 10 * 1000);
       }
     }
