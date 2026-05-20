@@ -583,11 +583,26 @@ describe('Viessmannapi auth failure paths', () => {
 });
 
 describe('Viessmannapi wrapped callback handling', () => {
+  function trackUnhandledRejections() {
+    const unhandled = [];
+    const listener = (reason) => {
+      unhandled.push(reason);
+    };
+    process.on('unhandledRejection', listener);
+    return {
+      unhandled,
+      cleanup() {
+        process.removeListener('unhandledRejection', listener);
+      },
+    };
+  }
+
   it('logs and swallows updateDevices interval callback errors', async () => {
     const timers = useFakeTimers();
     try {
       const adapter = createAdapter();
       const errors = [];
+      const unhandledRejections = trackUnhandledRejections();
       adapter.log = { debug: noop, info: noop, warn: noop, error: (msg) => errors.push(String(msg)) };
       adapter.config = { interval: 1, eventInterval: 5 };
       adapter.subscribeStates = noop;
@@ -611,6 +626,8 @@ describe('Viessmannapi wrapped callback handling', () => {
       await timers.intervals[0].callback();
 
       expect(errors.some((line) => line.includes('updateDevices interval failed: boom update'))).to.equal(true);
+      expect(unhandledRejections.unhandled).to.have.length(0);
+      unhandledRejections.cleanup();
     } finally {
       timers.restore();
     }
@@ -621,6 +638,7 @@ describe('Viessmannapi wrapped callback handling', () => {
     try {
       const adapter = createAdapter();
       const errors = [];
+      const unhandledRejections = trackUnhandledRejections();
       adapter.log = { debug: noop, info: noop, warn: noop, error: (msg) => errors.push(String(msg)) };
       adapter.config = { interval: 1, eventInterval: 5 };
       adapter.subscribeStates = noop;
@@ -644,6 +662,55 @@ describe('Viessmannapi wrapped callback handling', () => {
       await timers.intervals[1].callback();
 
       expect(errors.some((line) => line.includes('getEvents interval failed: boom events'))).to.equal(true);
+      expect(unhandledRejections.unhandled).to.have.length(0);
+      unhandledRejections.cleanup();
+    } finally {
+      timers.restore();
+    }
+  });
+
+  it('logs and swallows refresh updateDevices callback errors', async () => {
+    const timers = useFakeTimers();
+    try {
+      const adapter = createAdapter();
+      const errors = [];
+      const unhandledRejections = trackUnhandledRejections();
+      adapter.log = { debug: noop, info: noop, warn: noop, error: (msg) => errors.push(String(msg)) };
+      adapter.config = { interval: 1, eventInterval: 5 };
+      adapter.subscribeStates = noop;
+      adapter.getAdapterObjectsAsync = async () => ({});
+      adapter.delObjectAsync = async () => {};
+      adapter.login = async () => {
+        adapter.session = { access_token: 'token', expires_in: 3600 };
+      };
+      adapter.getDeviceIds = async () => {};
+      adapter.updateDevices = async () => {};
+      adapter.getEvents = async () => {};
+      adapter.scheduleTokenRefresh = noop;
+      adapter.getObjectAsync = async () => ({ common: { param: 'temperature' } });
+      adapter.getStateAsync = async () => ({ val: 'https://example.com/command' });
+      adapter.requestClient.defaults.adapter = async () => ({
+        config: {},
+        data: { ok: true },
+        headers: {},
+        status: 200,
+        statusText: 'OK',
+      });
+
+      await adapter.onReady();
+
+      adapter.updateDevices = async () => {
+        throw new Error('boom refresh');
+      };
+      await adapter.onStateChange('viessmannapi.0.device.feature.setValue', {
+        ack: false,
+        val: '21',
+      });
+      await timers.timeouts[timers.timeouts.length - 1].callback();
+
+      expect(errors.some((line) => line.includes('refresh updateDevices failed: boom refresh'))).to.equal(true);
+      expect(unhandledRejections.unhandled).to.have.length(0);
+      unhandledRejections.cleanup();
     } finally {
       timers.restore();
     }
