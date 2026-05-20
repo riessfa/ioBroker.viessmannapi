@@ -4,7 +4,7 @@ Thanks for contributing to `ioBroker.viessmannapi`.
 
 ## Development workflow
 
-1. Create a topic branch from `main`.
+1. Create a topic branch from `master`.
 2. Install dependencies with `npm ci`.
 3. Make your change in focused commits.
 4. Run the local quality checks:

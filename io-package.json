@@ -3,6 +3,10 @@
     "name": "viessmannapi",
     "version": "2.5.1",
     "news": {
+      "2.5.1": {
+        "en": "Add contribution and troubleshooting guides, expand JSDoc coverage in lib helpers, and add tests for wrapped polling callback errors",
+        "de": "Beitrags- und Troubleshooting-Anleitungen ergänzt, JSDoc-Abdeckung in lib-Helfern erweitert und Tests für gewickelte Polling-Callback-Fehler hinzugefügt"
+      },
       "2.5.0": {
         "en": "Mark maintained fork, update documentation, and document current runtime requirements, authentication handling, retry behavior, safe logging, and request-flow tests",
         "de": "Fork-Kennzeichnung ergänzt, Dokumentation aktualisiert und aktuelle Laufzeit-Anforderungen, Authentifizierung, Retry-Verhalten, sichere Logs und Request-Flow-Tests dokumentiert"

@@ -160,7 +160,7 @@ class Viessmannapi extends utils.Adapter {
       params: authorizeParams,
     })
       .then((res) => {
-        this.log.debug(JSON.stringify(res.data));
+        this.log.debug(stringifyForLog(res.data));
         return res.data;
       })
       .catch((error) => {
@@ -206,7 +206,7 @@ class Viessmannapi extends utils.Adapter {
       data: qs.stringify(tokenData),
     })
       .then((res) => {
-        this.log.debug(JSON.stringify(res.data));
+        this.log.debug(stringifyForLog(res.data));
         this.session = res.data;
         this.setState('info.connection', true, true);
         this.scheduleTokenRefresh();
