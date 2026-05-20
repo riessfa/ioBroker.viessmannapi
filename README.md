@@ -156,6 +156,24 @@ Viessmann stellt die aktuellen Kompatibilitäts- und Datenpunktlisten bereit:
 
 Fragen zu fehlenden Datenpunkten bitte direkt an Viessmann richten, da der Adapter nur die von der Viessmann API gelieferten Features abbilden kann.
 
+
+## Screenshots
+
+Admin-Konfiguration in ioBroker (Client ID / Username / Password):
+
+![ioBroker Admin-Konfiguration](docs/admin-config-example.svg)
+
+Viessmann Developer Portal (Client-Erstellung):
+
+![Viessmann Developer Portal Client-Erstellung](docs/viessmann-developer-client-example.svg)
+
+## Fehlerbehebung
+
+- **"Cannot find clientId in the viessmann Account"**: Nach dem Erstellen eines neuen Clients bis zu **15 Minuten** warten, bis der Client in der IAM-Umgebung verfügbar ist.
+- **"Invalid redirection URI"**: Die Redirect URI muss exakt `http://localhost:4200/` sein — inklusive **Trailing Slash**.
+- **`429 Too Many Requests`**: Viessmann-Tageslimit erreicht; Rücksetzung erfolgt täglich um **02:00 UTC**. Polling über `interval` und `eventInterval` erhöhen und die Abfrage mit `devicelist`/`featureFilter` eingrenzen.
+- **Token-Refresh schlägt wiederholt fehl**: Der Adapter plant automatisch nach **1 Minute** einen vollständigen Re-Login (`scheduleRelogin` in `lib/auth.js`).
+
 ## Entwicklung
 
 ```bash
@@ -330,6 +348,24 @@ Viessmann provides the current compatibility and data point references:
 - API community: <https://www.viessmann-community.com/t5/The-Viessmann-API/bd-p/dev-viessmann-api>
 
 Questions about missing data points should be directed to Viessmann because the adapter can only expose features returned by the Viessmann API.
+
+
+## Screenshots
+
+Admin configuration in ioBroker (Client ID / Username / Password):
+
+![ioBroker Admin configuration](docs/admin-config-example.svg)
+
+Viessmann Developer Portal (client creation):
+
+![Viessmann Developer Portal client creation](docs/viessmann-developer-client-example.svg)
+
+## Troubleshooting
+
+- **"Cannot find clientId in the viessmann Account"**: Wait up to **15 minutes** after creating a new client before it is propagated in IAM.
+- **"Invalid redirection URI"**: The redirect URI must be exactly `http://localhost:4200/` with the **trailing slash**.
+- **`429 Too Many Requests`**: The Viessmann daily rate limit was reached; it resets daily at **02:00 UTC**. Increase `interval`/`eventInterval` and narrow requests via `devicelist`/`featureFilter`.
+- **Token refresh keeps failing**: The adapter automatically falls back to a full re-login after **1 minute** (`scheduleRelogin` in `lib/auth.js`).
 
 ## Development
 
