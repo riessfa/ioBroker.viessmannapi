@@ -111,7 +111,7 @@ systemDictionary = {
     pl: 'Indeks bramy, która ma być używana.',
     'zh-cn': '要使用的网关的索引。',
   },
-  'Allowlist of IDs which allow to update to prevent rate limit with ViCare Einzelraumsteuerung. Example: 0,HeatDemandControl':
+  'Allowlist of IDs which allow to update to prevent rate limit with ViCare Einzelraumsteuerung. Example: 0, HeatDemandControl':
     {
       en: 'Allowlist of IDs which allow to update to prevent rate limit with ViCare Einzelraumsteuerung. Example: 0, HeatDemandControl',
       de: 'Erlaubnisliste der IDs, die zu aktualisieren sind, um Ratenlimit mit ViCare Einzelraumsteuerung zu verhindern. Beispiel: 0, HeatDemandControl',
