@@ -70,11 +70,8 @@ jobs:
           os: ${{ matrix.os }}
           # Uncomment the following line if your adapter cannot be installed using 'npm ci'
           # install-command: 'npm install'
-# TODO: To enable automatic npm releases, create a token on npmjs.org
-# Enter this token as a GitHub secret (with name NPM_TOKEN) in the repository options
-# Then uncomment the following block:
-
-  # Deploys the final package to NPM
+  # Deploys the final package to NPM.
+  # Requires an npmjs.org token stored as the NPM_TOKEN GitHub secret.
   deploy:
     needs: [check-and-lint, adapter-tests]
 
@@ -99,10 +96,8 @@ jobs:
           npm-token: ${{ secrets.NPM_TOKEN }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-          # When using Sentry for error reporting, Sentry can be informed about new releases
-          # To enable create a API-Token in Sentry (User settings, API keys)
-          # Enter this token as a GitHub secret (with name SENTRY_AUTH_TOKEN) in the repository options
-          # Then uncomment and customize the following block:
+          # Sentry release tracking. Requires a Sentry API token stored as the
+          # SENTRY_AUTH_TOKEN GitHub secret (Sentry: User settings, API keys).
           sentry: true
           sentry-token: ${{ secrets.SENTRY_AUTH_TOKEN }}
           sentry-project: "iobroker-viessmannapi"

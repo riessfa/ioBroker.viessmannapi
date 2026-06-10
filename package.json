@@ -30,8 +30,12 @@
     "@eslint/js": "^10.0.1",
     "@iobroker/testing": "^5.2.2",
     "@types/node": "^25.6.0",
+    "chai": "^4.5.0",
+    "chai-as-promised": "^7.1.2",
     "eslint": "^10.3.0",
     "globals": "^17.6.0",
+    "mocha": "^11.7.6",
+    "sinon-chai": "^3.7.0",
     "typescript": "^6.0.3"
   },
   "main": "main.js",
@@ -57,5 +61,10 @@
       "name": "TA2k",
       "email": "tombox2020@gmail.com"
     }
-  ]
+  ],
+  "overrides": {
+    "serialize-javascript": "^7.0.5",
+    "esbuild": "^0.25.0",
+    "diff": "^8.0.3"
+  }
 }
