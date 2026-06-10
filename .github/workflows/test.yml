@@ -1,16 +1,12 @@
-name: Test and Release
+name: Test
 
-# Run this job on all pushes and pull requests
-# as well as tags with a semantic version
+# Run this job on all pushes and pull requests.
+# This fork cannot publish to npm (the iobroker.viessmannapi package name
+# is owned by the upstream author), so there is no release/deploy job.
 on:
   push:
     branches:
       - '**'
-    tags:
-      # normal versions
-      - 'v[0-9]+.[0-9]+.[0-9]+'
-      # pre-releases
-      - 'v[0-9]+.[0-9]+.[0-9]+-**'
   pull_request:
     branches:
       - '**'
@@ -70,37 +66,3 @@ jobs:
           os: ${{ matrix.os }}
           # Uncomment the following line if your adapter cannot be installed using 'npm ci'
           # install-command: 'npm install'
-  # Deploys the final package to NPM.
-  # Requires an npmjs.org token stored as the NPM_TOKEN GitHub secret.
-  deploy:
-    needs: [check-and-lint, adapter-tests]
-
-    # Trigger this step only when a commit on any branch is tagged with a version number
-    if: |
-      contains(github.event.head_commit.message, '[skip ci]') == false &&
-      github.event_name == 'push' &&
-      startsWith(github.ref, 'refs/tags/v')
-
-    runs-on: ubuntu-latest
-
-    # Write permissions are required to create Github releases
-    permissions:
-      contents: write
-
-    steps:
-      - uses: ioBroker/testing-action-deploy@v1
-        with:
-          node-version: '24.x'
-          # Uncomment the following line if your adapter cannot be installed using 'npm ci'
-          # install-command: 'npm install'
-          npm-token: ${{ secrets.NPM_TOKEN }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-
-          # Sentry release tracking. Requires a Sentry API token stored as the
-          # SENTRY_AUTH_TOKEN GitHub secret (Sentry: User settings, API keys).
-          sentry: true
-          sentry-token: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          sentry-project: "iobroker-viessmannapi"
-          sentry-version-prefix: "iobroker.viessmannapi"
-          # If your sentry project is linked to a GitHub repository, you can enable the following option
-          # sentry-github-integration: true

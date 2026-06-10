@@ -61,10 +61,14 @@ eslint.config.cjs         ESLint flat config (eslint:recommended + custom rules)
 ### CI
 
 ```
-.github/workflows/test-and-release.yml
+.github/workflows/test.yml
   - check-and-lint: ESLint + TypeScript checking + package validation
+  - dependency-audit: npm audit on production dependencies
   - adapter-tests: matrix of Node 20/22/24 x Ubuntu/Windows/macOS
 ```
+
+No deploy/release job: this fork cannot publish to npm because the
+`iobroker.viessmannapi` package name is owned by the upstream author.
 
 ## Development Setup
 
