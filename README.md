@@ -1,6 +1,6 @@
 # ioBroker.viessmannapi
 
-> **Maintained fork notice:** This repository is a maintained fork of the original `TA2k/ioBroker.viessmannapi` adapter. The adapter name and npm package stay `iobroker.viessmannapi` for ioBroker compatibility, while this fork continues maintenance, dependency updates, and compatibility work.
+> **Maintained fork notice:** This repository is a maintained fork of the original `TA2k/ioBroker.viessmannapi` adapter. The adapter name stays `iobroker.viessmannapi` for ioBroker compatibility, while this fork continues maintenance, dependency updates, and compatibility work. The fork is not published to npm — install it from this GitHub repository (see the installation section).
 
 ## Deutsch
 
@@ -41,7 +41,9 @@ Release-Schwerpunkte:
 
 ## Installation und Einrichtung
 
-1. Adapter in ioBroker installieren oder diesen Fork als GitHub-/npm-Quelle verwenden.
+1. Adapter aus GitHub installieren — dieser Fork wird **nicht** auf npm veröffentlicht (der npm-Paketname gehört dem ursprünglichen Autor):
+   - **Admin-UI:** Expertenmodus aktivieren, dann unter „Adapter" auf das GitHub-Symbol („Aus eigener URL installieren") klicken und im Tab „Eigene" diese URL eintragen: `https://github.com/riessfa/ioBroker.viessmannapi`.
+   - **Kommandozeile (alternativ):** `iobroker url https://github.com/riessfa/ioBroker.viessmannapi`
 2. Viessmann Developer App öffnen: <https://app.developer.viessmann-climatesolutions.com/>.
 3. Eine Client ID für den Adapter erstellen.
 4. In der Viessmann Developer App Google reCAPTCHA deaktivieren.
@@ -234,7 +236,9 @@ Release highlights:
 
 ## Installation and setup
 
-1. Install the adapter in ioBroker or use this fork as a GitHub/npm source.
+1. Install the adapter from GitHub — this fork is **not** published to npm (the npm package name belongs to the original author):
+   - **Admin UI:** enable expert mode, then on the "Adapters" page click the GitHub icon ("Install from custom URL") and enter this URL on the "Custom" tab: `https://github.com/riessfa/ioBroker.viessmannapi`.
+   - **Command line (alternative):** `iobroker url https://github.com/riessfa/ioBroker.viessmannapi`
 2. Open the Viessmann Developer App: <https://app.developer.viessmann-climatesolutions.com/>.
 3. Create a Client ID for the adapter.
 4. Disable Google reCAPTCHA for the app.
