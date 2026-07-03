@@ -27,8 +27,16 @@ const { extractKeys } = require('./lib/extractKeys');
 const { sanitizeUrlForLog, stringifyForLog } = require('./lib/safeLog');
 const { createApiClient } = require('./lib/apiClient');
 const authHelpers = require('./lib/auth');
+const packageJson = require('./package.json');
 
 const { TOKEN_REFRESH_RETRY_DELAY_MS } = authHelpers;
+
+const DEFAULT_UPDATE_INTERVAL_MINUTES = 5;
+const DEFAULT_EVENT_INTERVAL_MINUTES = 300;
+const MIN_INTERVAL_MINUTES = 0.5;
+// Keep the interval in milliseconds below the 32-bit setInterval limit (31 days)
+const MAX_INTERVAL_MINUTES = 44640;
+const RATE_LIMIT_MESSAGE = 'Rate limit reached. It resets daily at 02:00 UTC';
 
 class Viessmannapi extends utils.Adapter {
   /**
@@ -43,7 +51,7 @@ class Viessmannapi extends utils.Adapter {
     this.on('stateChange', this.onStateChange.bind(this));
     this.on('unload', this.onUnload.bind(this));
     this.installationArray = [];
-    this.userAgent = 'ioBroker 2.0.4';
+    this.userAgent = 'ioBroker.viessmannapi ' + packageJson.version;
     const { client, retryInterceptorId } = createApiClient();
     this.requestClient = client;
     this.retryInterceptorId = retryInterceptorId;
@@ -52,6 +60,9 @@ class Viessmannapi extends utils.Adapter {
     this.reLoginTimeout = null;
     this.refreshTokenTimeout = null;
     this.refreshTokenInterval = null;
+    this.refreshTimeout = null;
+    this.reloginAttempts = 0;
+    this.deviceDiscoveryDone = false;
     this.extractKeys = extractKeys;
     this.idArray = [];
     this.session = {};
@@ -75,10 +86,50 @@ class Viessmannapi extends utils.Adapter {
     this.log.error(context + ': ' + stringifyForLog(details));
   }
 
-  logResponseData(error) {
-    if (error && error.response) {
-      this.log.error(stringifyForLog(error.response.data));
+  /**
+   * Coerces a config value to a finite number within bounds, falling back to a default.
+   * @param {any} value
+   * @param {number} defaultValue
+   * @param {number} min
+   * @param {number} max
+   * @param {string} name
+   * @returns {number}
+   */
+  sanitizeNumberConfig(value, defaultValue, min, max, name) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) {
+      this.log.warn('Invalid value for ' + name + ' (' + value + '). Using default ' + defaultValue);
+      return defaultValue;
     }
+    if (numeric < min) {
+      this.log.info('Set ' + name + ' to minimum ' + min);
+      return min;
+    }
+    if (numeric > max) {
+      this.log.info('Set ' + name + ' to maximum ' + max);
+      return max;
+    }
+    return numeric;
+  }
+
+  sanitizeConfig() {
+    this.config.interval = this.sanitizeNumberConfig(
+      this.config.interval,
+      DEFAULT_UPDATE_INTERVAL_MINUTES,
+      MIN_INTERVAL_MINUTES,
+      MAX_INTERVAL_MINUTES,
+      'interval',
+    );
+    this.config.eventInterval = this.sanitizeNumberConfig(
+      this.config.eventInterval,
+      DEFAULT_EVENT_INTERVAL_MINUTES,
+      MIN_INTERVAL_MINUTES,
+      MAX_INTERVAL_MINUTES,
+      'eventInterval',
+    );
+    this.config.gatewayIndex = Math.floor(
+      this.sanitizeNumberConfig(this.config.gatewayIndex, 1, 1, Number.MAX_SAFE_INTEGER, 'gatewayIndex'),
+    );
   }
 
   /**
@@ -87,14 +138,7 @@ class Viessmannapi extends utils.Adapter {
   async onReady() {
     // Reset the connection indicator during startup
     this.setState('info.connection', false, true);
-    if (this.config.interval < 0.5) {
-      this.log.info('Set interval to minimum 0.5');
-      this.config.interval = 0.5;
-    }
-    if (this.config.eventInterval < 0.5) {
-      this.log.info('Set interval to minimum 0.5');
-      this.config.eventInterval = 0.5;
-    }
+    this.sanitizeConfig();
 
     this.subscribeStates('*');
 
@@ -111,30 +155,55 @@ class Viessmannapi extends utils.Adapter {
       }
     }
 
+    await this.connect();
+  }
+
+  /**
+   * Logs in and, on success, runs device discovery (once), an initial fetch,
+   * and starts polling. On failure a relogin retry is scheduled with backoff,
+   * so a failed (initial or later) login never leaves the adapter dead.
+   * @returns {Promise<void>}
+   */
+  async connect() {
     await this.login();
-    if (this.session.access_token) {
+    if (!this.session.access_token) {
+      this.log.error('Login failed. Scheduling retry');
+      this.scheduleRelogin();
+      return;
+    }
+    this.reloginAttempts = 0;
+    if (!this.deviceDiscoveryDone) {
       await this.getDeviceIds();
+      this.deviceDiscoveryDone = true;
       await this.updateDevices(true);
       await this.getEvents();
-      this.clearPollingTimers();
-      this.updateInterval = setInterval(async () => {
-        try {
-          await this.updateDevices();
-        } catch (e) {
-          this.log.error('updateDevices interval failed: ' + (e && e.message ? e.message : e));
-        }
-      }, this.config.interval * 60 * 1000);
-
-      this.eventInterval = setInterval(async () => {
-        try {
-          await this.getEvents();
-        } catch (e) {
-          this.log.error('getEvents interval failed: ' + (e && e.message ? e.message : e));
-        }
-      }, this.config.eventInterval * 60 * 1000);
-
-      this.scheduleTokenRefresh();
     }
+    this.startPolling();
+    this.scheduleTokenRefresh();
+  }
+
+  /**
+   * Starts the feature and event polling intervals if they are not running yet.
+   */
+  startPolling() {
+    if (this.updateInterval || this.eventInterval) {
+      return;
+    }
+    this.updateInterval = setInterval(async () => {
+      try {
+        await this.updateDevices();
+      } catch (e) {
+        this.log.error('updateDevices interval failed: ' + (e && e.message ? e.message : e));
+      }
+    }, this.config.interval * 60 * 1000);
+
+    this.eventInterval = setInterval(async () => {
+      try {
+        await this.getEvents();
+      } catch (e) {
+        this.log.error('getEvents interval failed: ' + (e && e.message ? e.message : e));
+      }
+    }, this.config.eventInterval * 60 * 1000);
   }
   async login() {
     const [code_verifier, codeChallenge] = this.getCodeChallenge();
@@ -180,7 +249,7 @@ class Viessmannapi extends utils.Adapter {
           }
 
           this.log.error(stringifyForLog(error.response.data));
-          if (error.response.data.error && error.response.data.error === 'Invalid redirection URI.') {
+          if (error.response.data && error.response.data.error === 'Invalid redirection URI.') {
             this.log.error(
               'Please add / at the end of the redirect URI in viessman app settings: http://localhost:4200/',
             );
@@ -216,9 +285,8 @@ class Viessmannapi extends utils.Adapter {
         this.setState('info.connection', false, true);
         this.logAxiosError('Token request failed', error);
         if (error.response && error.response.status === 429) {
-          this.log.info('Rate limit reached. Will be reseted next day 02:00');
+          this.log.info(RATE_LIMIT_MESSAGE);
         }
-        this.logResponseData(error);
       });
   }
   async getDeviceIds() {
@@ -258,49 +326,48 @@ class Viessmannapi extends utils.Adapter {
       .catch((error) => {
         this.logAxiosError('Installations request failed', error);
         if (error.response && error.response.status === 429) {
-          this.log.info('Rate limit reached. Will be reseted next day 02:00');
+          this.log.info(RATE_LIMIT_MESSAGE);
         }
-        this.logResponseData(error);
       });
     for (const installation of this.installationArray) {
       const installationId = installation.id.toString();
 
       let currentGatewayIndex = this.config.gatewayIndex;
       if (installation.gateways.length > 1) {
-        this.log.info(
-          'Found ' + installation.gateways.length + ' gateways for installation for installation ' + installation.id,
-        );
+        this.log.info('Found ' + installation.gateways.length + ' gateways for installation ' + installation.id);
         this.log.debug(JSON.stringify(installation.gateways));
         this.log.info('Filter out offline gateways.');
-        installation.gateways = installation.gateways.filter((gateway) => {
-          return gateway.aggregatedStatus !== 'Offline';
-        });
-        //check if gatewayIndex is valid
-        if (currentGatewayIndex > installation.gateways.length) {
-          this.log.warn(
-            'Gateway Index ' +
-              currentGatewayIndex +
-              ' is not valid. Please check the number of gateways for installation ' +
-              installation.id +
-              ' index is set to 1',
-          );
-          currentGatewayIndex = 1;
-        }
+      }
+      installation.gateways = installation.gateways.filter((gateway) => {
+        return gateway.aggregatedStatus !== 'Offline';
+      });
+      //check if gatewayIndex is valid
+      if (currentGatewayIndex > installation.gateways.length) {
         this.log.warn(
+          'Gateway Index ' +
+            currentGatewayIndex +
+            ' is not valid. Please check the number of gateways for installation ' +
+            installation.id +
+            ' index is set to 1',
+        );
+        currentGatewayIndex = 1;
+      }
+      if (installation.gateways.length > 1) {
+        this.log.info(
           'Found ' +
             installation.gateways.length +
-            ' online gateways select ' +
+            ' online gateways. Selecting gateway ' +
             currentGatewayIndex +
-            ' gateway. for installation ' +
+            ' for installation ' +
             installation.id,
         );
       }
       this.gatewayIndexObject[installationId] = currentGatewayIndex;
       const gateway = installation.gateways[currentGatewayIndex - 1];
-      if (!gateway || gateway == null) {
-        this.log.warn('No gateway found for installation ' + installation.id + 'and index ' + currentGatewayIndex);
+      if (!gateway) {
+        this.log.warn('No gateway found for installation ' + installation.id + ' and index ' + currentGatewayIndex);
         this.log.info(JSON.stringify(installation.gateways));
-        return;
+        continue;
       }
       for (const device of gateway.devices) {
         await this.setObjectNotExistsAsync(installationId + '.' + device.id, {
@@ -343,9 +410,9 @@ class Viessmannapi extends utils.Adapter {
 
     for (const installation of this.installationArray) {
       const currentGatewayIndex = this.gatewayIndexObject[installation.id.toString()];
-      if (!installation['gateways'][currentGatewayIndex - 1]) {
+      if (!currentGatewayIndex || !installation['gateways'][currentGatewayIndex - 1]) {
         this.log.warn('No gateway found for installation ' + installation.id);
-        return;
+        continue;
       }
 
       for (const device of installation['gateways'][currentGatewayIndex - 1]['devices']) {
@@ -427,41 +494,58 @@ class Viessmannapi extends utils.Adapter {
               await this.extractKeys(this, extractPath, data, 'feature', forceIndex, false, element.desc);
             })
             .catch((error) => {
-              if (error.response && error.response.status === 401) {
-                error.response && this.log.debug(stringifyForLog(error.response.data));
-                this.log.info(element.path + ' receive 401 error. Refresh Token in 30 seconds');
-                this.scheduleTokenRefresh(TOKEN_REFRESH_RETRY_DELAY_MS);
-
-                return;
-              }
-              if (error.response && error.response.status === 429) {
-                this.log.info('Rate limit reached. Will be reseted next day 02:00');
-              }
-              if (error.response && error.response.status === 502) {
-                this.log.info(stringifyForLog(error.response.data));
-                this.log.info('Please check the connection of your gateway');
-                return;
-              }
-              if (error.response && error.response.status === 504) {
-                this.log.info('Viessmann API is not available please try again later');
-                return;
-              }
-              if (error.response && error.response.status >= 500) {
-                this.log.info(
-                  'Error ' +
-                    error.response.status +
-                    '. ViessmanAPI not available because of unstable server. Please contact Viessmann and ask them to improve their server',
-                );
+              if (this.handleKnownPollingError(error, element.path + ' feature update')) {
                 return;
               }
               this.log.error('Feature update URL path: ' + sanitizeUrlForLog(url, true));
               this.logAxiosError('Feature update request failed', error);
-              this.logResponseData(error);
             });
         }
       }
     }
   }
+  /**
+   * Handles HTTP statuses that are expected during polling (401/429/502/504/5xx)
+   * with an info-level message instead of a full error dump.
+   * @param {any} error Axios error
+   * @param {string} context Short description of the failing request
+   * @returns {boolean} true when the error was handled
+   */
+  handleKnownPollingError(error, context) {
+    const status = error && error.response && error.response.status;
+    if (!status) {
+      return false;
+    }
+    if (status === 401) {
+      this.log.debug(stringifyForLog(error.response.data));
+      this.log.info(context + ' received 401 error. Refresh Token in 30 seconds');
+      this.scheduleTokenRefresh(TOKEN_REFRESH_RETRY_DELAY_MS);
+      return true;
+    }
+    if (status === 429) {
+      this.log.info(RATE_LIMIT_MESSAGE);
+      return true;
+    }
+    if (status === 502) {
+      this.log.info(stringifyForLog(error.response.data));
+      this.log.info('Please check the connection of your gateway');
+      return true;
+    }
+    if (status === 504) {
+      this.log.info('Viessmann API is not available please try again later');
+      return true;
+    }
+    if (status >= 500) {
+      this.log.info(
+        'Error ' +
+          status +
+          '. ViessmanAPI not available because of unstable server. Please contact Viessmann and ask them to improve their server',
+      );
+      return true;
+    }
+    return false;
+  }
+
   async getEvents() {
     const headers = {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -472,9 +556,9 @@ class Viessmannapi extends utils.Adapter {
     for (const installation of this.installationArray) {
       const installationId = installation.id.toString();
       const currentGatewayIndex = this.gatewayIndexObject[installationId];
-      if (!installation['gateways'][currentGatewayIndex - 1]) {
-        this.log.warn('No gateway found for installation ' + installation.id + 'and index ' + currentGatewayIndex);
-        return;
+      if (!currentGatewayIndex || !installation['gateways'][currentGatewayIndex - 1]) {
+        this.log.warn('No gateway found for installation ' + installation.id + ' and index ' + currentGatewayIndex);
+        continue;
       }
       // Note: The events endpoint /iot/v2/events-history/... was already V2 in the original code. No change needed here.
       // const gatewaySerial = installation['gateways'][currentGatewayIndex - 1].serial.toString();
@@ -503,26 +587,10 @@ class Viessmannapi extends utils.Adapter {
           await this.extractKeys(this, installationId + '.events', data, null, true);
         })
         .catch((error) => {
-          if (error.response && error.response.status === 401) {
-            error.response && this.log.debug(stringifyForLog(error.response.data));
-
-            this.log.info('Get Events receive 401 error. Refresh Token in 30 seconds');
-            this.scheduleTokenRefresh(TOKEN_REFRESH_RETRY_DELAY_MS);
-
+          if (this.handleKnownPollingError(error, 'Get Events')) {
             return;
           }
-          if (error.response && error.response.status === 429) {
-            this.log.info('Rate limit reached. Will be reseted next day 02:00');
-          }
-          if (error.response && error.response.status === 502) {
-            this.log.info(stringifyForLog(error.response.data));
-            this.log.info('Please check the connection of your gateway');
-          }
-          if (error.response && error.response.status === 504) {
-            this.log.info('Viessmann API is not available please try again later');
-          }
           this.logAxiosError('Receiving events failed', error);
-          error.response && this.log.debug(stringifyForLog(error.response.data));
         });
     }
   }
@@ -581,6 +649,19 @@ class Viessmannapi extends utils.Adapter {
     }
   }
 
+  /**
+   * Converts numeric strings to numbers; leaves all other values
+   * (including booleans and numbers) untouched.
+   * @param {any} value
+   * @returns {any}
+   */
+  coerceNumericString(value) {
+    if (typeof value === 'string' && value.trim() !== '' && !isNaN(Number(value))) {
+      return Number(value);
+    }
+    return value;
+  }
+
   validateCommandPayload(common, stateVal) {
     if (!common) {
       return { valid: true, data: {} };
@@ -592,10 +673,7 @@ class Viessmannapi extends utils.Adapter {
     }
 
     if (!Array.isArray(param)) {
-      let value = stateVal;
-      if (value !== '' && value !== null && !isNaN(value)) {
-        value = Number(value);
-      }
+      const value = this.coerceNumericString(stateVal);
 
       if (common.states) {
         const allowed = Object.keys(common.states);
@@ -652,10 +730,7 @@ class Viessmannapi extends utils.Adapter {
         continue;
       }
 
-      let value = parsed[entry.param];
-      if (value !== '' && value !== null && !isNaN(value)) {
-        value = Number(value);
-      }
+      const value = this.coerceNumericString(parsed[entry.param]);
 
       if (entry.states) {
         const allowed = Object.keys(entry.states);
@@ -755,20 +830,23 @@ class Viessmannapi extends utils.Adapter {
           })
           .catch((error) => {
             this.logAxiosError('Command request failed', error);
-            this.logResponseData(error);
             if (
               error.response &&
               error.response.data &&
               error.response.data.extendedPayload &&
               error.response.data.extendedPayload.code === 404
             ) {
-              this.log.error('Command not exist please. Please delete objects manually and restart the adapter');
+              this.log.error('Command does not exist. Please delete the objects manually and restart the adapter');
               return;
             }
             this.log.error('URL path: ' + sanitizeUrlForLog(uriState.val, true));
             this.log.error('Data: ' + stringifyForLog(data));
           });
+        if (this.refreshTimeout) {
+          clearTimeout(this.refreshTimeout);
+        }
         this.refreshTimeout = setTimeout(async () => {
+          this.refreshTimeout = null;
           try {
             await this.updateDevices();
           } catch (e) {

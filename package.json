@@ -1,6 +1,6 @@
 {
   "name": "iobroker.viessmannapi",
-  "version": "2.5.1",
+  "version": "2.5.2",
   "description": "Maintained fork of the ioBroker adapter for Viessmann Developer Cloud API",
   "author": {
     "name": "riessfa"
