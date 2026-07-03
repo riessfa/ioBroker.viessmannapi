@@ -1,8 +1,12 @@
 {
   "common": {
     "name": "viessmannapi",
-    "version": "2.5.1",
+    "version": "2.5.2",
     "news": {
+      "2.5.2": {
+        "en": "Fix multi-installation polling aborts, retry failed logins with backoff, validate polling intervals, keep boolean command values, harden PKCE/token-refresh requests, and make the object cache compact-mode safe",
+        "de": "Abbrüche beim Polling mehrerer Installationen behoben, fehlgeschlagene Logins mit Backoff wiederholt, Polling-Intervalle validiert, boolesche Kommandowerte beibehalten, PKCE/Token-Refresh-Anfragen gehärtet und Objekt-Cache Compact-Mode-sicher gemacht"
+      },
       "2.5.1": {
         "en": "Add contribution and troubleshooting guides, expand JSDoc coverage in lib helpers, and add tests for wrapped polling callback errors",
         "de": "Beitrags- und Troubleshooting-Anleitungen ergänzt, JSDoc-Abdeckung in lib-Helfern erweitert und Tests für gewickelte Polling-Callback-Fehler hinzugefügt"

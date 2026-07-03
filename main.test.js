@@ -350,6 +350,7 @@ describe('Viessmannapi auth timer handling', () => {
 
     adapter.updateInterval = updateInterval;
     adapter.eventInterval = eventInterval;
+    adapter.deviceDiscoveryDone = true;
     adapter.login = async () => {
       adapter.session = { access_token: 'access-token', expires_in: 3600 };
       adapter.scheduleTokenRefresh();
@@ -362,6 +363,51 @@ describe('Viessmannapi auth timer handling', () => {
     expect(adapter.eventInterval).to.equal(eventInterval);
     expect(timers.intervals).to.have.length(0);
     expect(timers.clearedIntervals).to.have.length(0);
+    expect(adapter.reloginAttempts).to.equal(0);
+  });
+
+  it('schedules relogin retries with exponential backoff and resets after success', async () => {
+    const adapter = createAdapter();
+    let loginSucceeds = false;
+
+    adapter.config = { interval: 5, eventInterval: 300 };
+    adapter.deviceDiscoveryDone = true;
+    adapter.login = async () => {
+      if (loginSucceeds) {
+        adapter.session = { access_token: 'access-token', expires_in: 3600 };
+      }
+    };
+
+    await adapter.connect();
+
+    expect(timers.timeouts).to.have.length(1);
+    expect(timers.timeouts[0].delay).to.equal(60 * 1000);
+    expect(adapter.reloginAttempts).to.equal(1);
+    expect(adapter.updateInterval).to.equal(null);
+
+    await timers.timeouts[0].callback();
+
+    expect(timers.timeouts).to.have.length(2);
+    expect(timers.timeouts[1].delay).to.equal(2 * 60 * 1000);
+    expect(adapter.reloginAttempts).to.equal(2);
+
+    loginSucceeds = true;
+    await timers.timeouts[1].callback();
+
+    expect(adapter.reloginAttempts).to.equal(0);
+    expect(timers.intervals).to.have.length(2);
+    expect(adapter.updateInterval).to.equal(timers.intervals[0]);
+    expect(adapter.eventInterval).to.equal(timers.intervals[1]);
+  });
+
+  it('caps the relogin backoff delay at 30 minutes', () => {
+    const adapter = createAdapter();
+
+    adapter.reloginAttempts = 20;
+    adapter.scheduleRelogin();
+
+    expect(timers.timeouts).to.have.length(1);
+    expect(timers.timeouts[0].delay).to.equal(30 * 60 * 1000);
   });
 });
 
@@ -579,6 +625,76 @@ describe('Viessmannapi auth failure paths', () => {
     expect(timers.timeouts).to.have.length(1);
     expect(timers.timeouts[0].delay).to.equal(60 * 1000);
     expect(adapter.reLoginTimeout).to.equal(timers.timeouts[0]);
+  });
+
+  it('handles authorization failures whose response has no body without throwing', async () => {
+    const adapter = createAdapter();
+    const setStateCalls = trackSetState(adapter);
+
+    adapter.config = { username: 'user', password: 'pass', client_id: 'client-id' };
+    adapter.requestClient.defaults.adapter = async () => {
+      const error = new Error('Request failed with status code 400');
+      error.response = { status: 400, headers: {} };
+      throw error;
+    };
+
+    await adapter.login();
+
+    expect(adapter.session).to.deep.equal({});
+    expect(setStateCalls).to.deep.include({ id: 'info.connection', val: false, ack: true });
+  });
+});
+
+describe('Viessmannapi PKCE and token encoding', () => {
+  afterEach(() => {
+    delete require.cache[require.resolve('./main')];
+  });
+
+  it('generates a 64-char hex verifier and a base64url challenge', () => {
+    const adapter = createAdapter();
+
+    const [verifier, challenge] = adapter.getCodeChallenge();
+
+    expect(verifier).to.match(/^[0-9a-f]{64}$/);
+    expect(challenge).to.match(/^[A-Za-z0-9_-]{43}$/);
+  });
+
+  it('generates a different verifier on each call', () => {
+    const adapter = createAdapter();
+
+    const [first] = adapter.getCodeChallenge();
+    const [second] = adapter.getCodeChallenge();
+
+    expect(first).to.not.equal(second);
+  });
+
+  it('URL-encodes the refresh token request body', async () => {
+    const timers = useFakeTimers();
+    try {
+      const adapter = createAdapter();
+      const requests = [];
+
+      adapter.config = { client_id: 'client id&x' };
+      adapter.session = { refresh_token: 'refresh+token=y', expires_in: 3600 };
+      adapter.requestClient.defaults.adapter = async (config) => {
+        requests.push(config);
+        return {
+          config,
+          data: { access_token: 'access-2', refresh_token: 'refresh-2', expires_in: 1800 },
+          headers: {},
+          status: 200,
+          statusText: 'OK',
+        };
+      };
+
+      await adapter.refreshToken();
+
+      expect(requests).to.have.length(1);
+      expect(requests[0].data).to.include('client_id=client%20id%26x');
+      expect(requests[0].data).to.include('refresh_token=refresh%2Btoken%3Dy');
+    } finally {
+      timers.restore();
+    }
   });
 });
 
@@ -941,7 +1057,7 @@ describe('Viessmannapi feature update handling', () => {
     ]);
   });
 
-  it('logs rate limits and request details for feature update 429 responses', async () => {
+  it('logs rate limits at info level without an error dump for feature update 429 responses', async () => {
     const { adapter, logs } = setupDeviceUpdateTest({
       errorStatus: 429,
       errorData: { message: 'rate limited' },
@@ -950,8 +1066,37 @@ describe('Viessmannapi feature update handling', () => {
     await adapter.updateDevices();
 
     expect(logs.info.join('\n')).to.include('Rate limit reached');
+    expect(logs.error).to.have.length(0);
+  });
+
+  it('logs full error details for unexpected feature update failures', async () => {
+    const { adapter, logs } = setupDeviceUpdateTest({
+      errorStatus: 418,
+      errorData: { message: 'unexpected' },
+    });
+
+    await adapter.updateDevices();
+
     expect(logs.error.join('\n')).to.include('Feature update request failed');
     expect(logs.error.join('\n')).to.include('/iot/v2/features/installations');
+  });
+
+  it('continues polling remaining installations when one has no gateway', async () => {
+    const { adapter, requests } = setupDeviceUpdateTest();
+
+    adapter.installationArray = [
+      {
+        id: 'installation-0',
+        gateways: [],
+      },
+      ...adapter.installationArray,
+    ];
+    adapter.gatewayIndexObject = { 'installation-0': 1, 'installation-1': 1 };
+
+    await adapter.updateDevices();
+
+    expect(requests).to.have.length(1);
+    expect(requests[0].url).to.include('installation-1');
   });
 
   it('logs a generic unstable-server message for feature update 500 responses', async () => {
@@ -1303,6 +1448,166 @@ describe('Viessmannapi command payload validation', () => {
     expect(warns[0]).to.include('exceeds maximum');
     expect(warns[0]).to.include('below minimum');
   });
+
+  it('keeps boolean single-parameter command values as booleans', async () => {
+    const { adapter, calls, warns } = setupCommandTest({
+      param: 'active',
+      type: 'mixed',
+    });
+
+    await adapter.onStateChange('viessmannapi.0.device.feature.setValue', { ack: false, val: true });
+
+    expect(warns).to.have.length(0);
+    expect(calls).to.have.length(1);
+    expect(calls[0].data).to.equal(JSON.stringify({ active: true }));
+  });
+
+  it('keeps boolean values in multi-parameter commands', async () => {
+    const { adapter, calls, warns } = setupCommandTest({
+      param: [
+        { param: 'active', type: 'mixed' },
+        { param: 'temperature', type: 'number' },
+      ],
+      type: 'object',
+    });
+
+    await adapter.onStateChange('viessmannapi.0.device.feature.setValue', {
+      ack: false,
+      val: '{"active": false, "temperature": 21}',
+    });
+
+    expect(warns).to.have.length(0);
+    expect(calls).to.have.length(1);
+    expect(calls[0].data).to.equal(JSON.stringify({ active: false, temperature: 21 }));
+  });
+
+  it('clears the previous feature refresh timer on consecutive commands', async () => {
+    const timers = useFakeTimers();
+    try {
+      const { adapter } = setupCommandTest({
+        param: 'temperature',
+        type: 'number',
+      });
+
+      await adapter.onStateChange('viessmannapi.0.device.feature.setValue', { ack: false, val: '21' });
+      await adapter.onStateChange('viessmannapi.0.device.feature.setValue', { ack: false, val: '22' });
+
+      expect(timers.timeouts).to.have.length(2);
+      expect(timers.timeouts[0].active).to.equal(false);
+      expect(timers.timeouts[1].active).to.equal(true);
+      expect(adapter.refreshTimeout).to.equal(timers.timeouts[1]);
+    } finally {
+      timers.restore();
+    }
+  });
+});
+
+describe('Viessmannapi config sanitization', () => {
+  afterEach(() => {
+    delete require.cache[require.resolve('./main')];
+  });
+
+  it('falls back to defaults for non-numeric config values', () => {
+    const adapter = createAdapter();
+
+    adapter.config = { interval: NaN, eventInterval: 'abc', gatewayIndex: undefined };
+    adapter.sanitizeConfig();
+
+    expect(adapter.config.interval).to.equal(5);
+    expect(adapter.config.eventInterval).to.equal(300);
+    expect(adapter.config.gatewayIndex).to.equal(1);
+  });
+
+  it('clamps out-of-range values and floors the gateway index', () => {
+    const adapter = createAdapter();
+
+    adapter.config = { interval: 0.1, eventInterval: 99999999, gatewayIndex: 2.7 };
+    adapter.sanitizeConfig();
+
+    expect(adapter.config.interval).to.equal(0.5);
+    expect(adapter.config.eventInterval).to.equal(44640);
+    expect(adapter.config.gatewayIndex).to.equal(2);
+  });
+
+  it('accepts valid numeric strings from older configs', () => {
+    const adapter = createAdapter();
+
+    adapter.config = { interval: '5', eventInterval: '300', gatewayIndex: '1' };
+    adapter.sanitizeConfig();
+
+    expect(adapter.config.interval).to.equal(5);
+    expect(adapter.config.eventInterval).to.equal(300);
+    expect(adapter.config.gatewayIndex).to.equal(1);
+  });
+});
+
+describe('Viessmannapi device discovery', () => {
+  afterEach(() => {
+    delete require.cache[require.resolve('./main')];
+  });
+
+  function setupDiscoveryTest(installations, config = {}) {
+    const adapter = createAdapter();
+    const warns = [];
+    const createdObjects = [];
+
+    adapter.config = { gatewayIndex: 1, ...config };
+    adapter.session = { access_token: 'access-token' };
+    adapter.log.warn = (msg) => warns.push(String(msg));
+    adapter.extractKeys = async () => {};
+    adapter.setObjectNotExistsAsync = async (id) => {
+      createdObjects.push(id);
+    };
+    adapter.requestClient.defaults.adapter = async (cfg) => ({
+      config: cfg,
+      data: { data: installations },
+      headers: {},
+      status: 200,
+      statusText: 'OK',
+    });
+
+    return { adapter, warns, createdObjects };
+  }
+
+  it('clamps an out-of-range gateway index for single-gateway installations', async () => {
+    const { adapter, warns, createdObjects } = setupDiscoveryTest(
+      [
+        {
+          id: 1,
+          description: 'Home',
+          gateways: [{ aggregatedStatus: 'Online', devices: [{ id: 'device-1', modelId: 'model' }] }],
+        },
+      ],
+      { gatewayIndex: 3 },
+    );
+
+    await adapter.getDeviceIds();
+
+    expect(warns.join('\n')).to.include('is not valid');
+    expect(adapter.gatewayIndexObject['1']).to.equal(1);
+    expect(createdObjects).to.include('1.device-1');
+  });
+
+  it('continues discovery for remaining installations when one has no online gateway', async () => {
+    const { adapter, createdObjects } = setupDiscoveryTest([
+      {
+        id: 1,
+        description: 'A',
+        gateways: [{ aggregatedStatus: 'Offline', devices: [{ id: 'device-1', modelId: 'model' }] }],
+      },
+      {
+        id: 2,
+        description: 'B',
+        gateways: [{ aggregatedStatus: 'Online', devices: [{ id: 'device-2', modelId: 'model' }] }],
+      },
+    ]);
+
+    await adapter.getDeviceIds();
+
+    expect(createdObjects).not.to.include('1.device-1');
+    expect(createdObjects).to.include('2.device-2');
+    expect(adapter.gatewayIndexObject['2']).to.equal(1);
+  });
 });
 
 describe('extractKeys', () => {
@@ -1440,5 +1745,41 @@ describe('extractKeys', () => {
     expect(adapter.states.get(`${root}.01.eventType`)).to.deep.equal({ val: 'gateway.online', ack: true });
     expect(adapter.states.get(`${root}.01.body.severity`)).to.deep.equal({ val: 'info', ack: true });
     expect(adapter.states.get(`${root}.02.eventType`)).to.deep.equal({ val: 'gateway.offline', ack: true });
+  });
+
+  it('keeps the created-object cache per adapter instance', async () => {
+    const first = createExtractKeysAdapterMock();
+    const second = createExtractKeysAdapterMock();
+    const root = testRoot('cache');
+
+    await extractKeys(first, root, { temperature: 21 });
+    await extractKeys(second, root, { temperature: 21 });
+
+    expect(first.objects.has(`${root}.temperature`)).to.equal(true);
+    expect(second.objects.has(`${root}.temperature`)).to.equal(true);
+  });
+
+  it('keeps numeric and boolean strings as strings instead of parsing them as JSON', async () => {
+    const adapter = createExtractKeysAdapterMock();
+    const root = testRoot('numericString');
+
+    await extractKeys(adapter, root, { serial: '123456', flag: 'true' });
+
+    expect(adapter.objects.get(`${root}.serial`).common.type).to.equal('string');
+    expect(adapter.states.get(`${root}.serial`)).to.deep.equal({ val: '123456', ack: true });
+    expect(adapter.objects.get(`${root}.flag`).common.type).to.equal('string');
+    expect(adapter.states.get(`${root}.flag`)).to.deep.equal({ val: 'true', ack: true });
+  });
+
+  it('creates states for top-level primitive arrays without empty path segments', async () => {
+    const adapter = createExtractKeysAdapterMock();
+    const root = testRoot('primitives');
+
+    await extractKeys(adapter, root, ['alpha', 'beta']);
+
+    expect(adapter.states.get(`${root}.alpha`)).to.deep.equal({ val: 'alpha', ack: true });
+    expect(adapter.states.get(`${root}.beta`)).to.deep.equal({ val: 'beta', ack: true });
+    const invalidIds = Array.from(adapter.objects.keys()).filter((id) => id.includes('..'));
+    expect(invalidIds).to.deep.equal([]);
   });
 });

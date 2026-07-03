@@ -392,6 +392,19 @@ Important scripts:
 
 ## Changelog
 
+### 2.5.2 (2026-07-03)
+
+- Fixed multi-installation handling: a missing gateway in one installation no longer aborts polling, events, and device discovery for all remaining installations.
+- Gateway selection now filters offline gateways and clamps an out-of-range `gatewayIndex` for single-gateway installations too.
+- Failed logins (including the initial one) now schedule a retry with exponential backoff instead of leaving the adapter idle until restart; a successful re-login starts polling if it was never started.
+- Polling intervals and `gatewayIndex` are validated: non-numeric values fall back to defaults and extreme values are clamped, preventing runaway polling from a `NaN` interval. Admin UI number fields got matching `min`/`step` attributes and no longer save `NaN`.
+- Boolean command values are no longer converted to `0`/`1` before sending; only numeric strings are converted to numbers.
+- Rapidly repeated commands no longer stack multiple delayed feature refreshes.
+- The PKCE code verifier is generated with `crypto.randomBytes`, and the token-refresh request body is properly URL-encoded.
+- The `extractKeys` object cache is stored per adapter instance (compact-mode safe); numeric strings such as serial numbers are no longer misdetected as JSON and converted to numbers.
+- Fixed a crash in the login error handler when the response carried no body, unified HTTP error handling between feature and event polling, removed duplicate error logging, and cleaned up log message wording.
+- The HTTP user agent now reflects the installed adapter version.
+
 ### 2.5.1 (2026-05-19)
 
 - Added contribution and troubleshooting guides for this maintained fork.
