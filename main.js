@@ -643,16 +643,16 @@ class Viessmannapi extends utils.Adapter {
         if (!Array.isArray(data)) {
             return data;
         }
-        if (data.length === 1) {
-            return data[0];
-        }
+        // Unwrapping depends on the raw response length, not the filtered one,
+        // so the object tree does not change when a filter is (de)activated.
+        const single = data.length === 1;
         data = data.filter(item => !item || !item.feature || !item.feature.startsWith('device.messages.logbook'));
         if (this.featureFilter) {
             const originalCount = data.length;
             data = data.filter(item => this.featureFilter && this.featureFilter((item && item.feature) || ''));
             this.log.debug(`Feature filter: ${originalCount} -> ${data.length} features`);
         }
-        return data;
+        return single && data.length === 1 ? data[0] : data;
     }
 
     /**
@@ -818,9 +818,9 @@ class Viessmannapi extends utils.Adapter {
             this.clearAuthTimers();
             this.clearPollingTimers();
             this.setState('info.connection', false, true);
-            callback();
         } catch (e) {
             this.log.error(`Error: ${e}`);
+        } finally {
             callback();
         }
     }
