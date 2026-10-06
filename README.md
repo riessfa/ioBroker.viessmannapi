@@ -21,21 +21,24 @@ Diese Version ist als Fork gekennzeichnet und wird unabhängig vom ursprünglich
 
 ## Aktuelle Version
 
-### 2.5.1
+### 2.6.0
 
 Release-Schwerpunkte:
 
-- Verbesserte Behandlung von Authentifizierungsfehlern und Token-Erneuerung.
-- Klareres Retry-Verhalten für API-Kommandos.
-- Zusätzliche Tests für Request-Flows, Authentifizierung und sichere Log-Ausgaben.
-- Aktualisierte Projektanforderungen für moderne ioBroker-Installationen.
-- Aktualisierte Dokumentation mit deutschem und englischem Abschnitt.
+- Admin-Oberfläche auf **jsonConfig** umgestellt (Materialize entfernt), alle Texte in 11 Sprachen.
+- Neue Option **„Alle Geräte-Features mit einer Anfrage pro Gateway laden"** (`loadViaGateway`): spart bei Anlagen mit mehreren Geräten API-Aufrufe.
+- **Ratenlimit (429)**: Der Adapter pausiert alle Anfragen bis zum von Viessmann gemeldeten Reset-Zeitpunkt, statt das Limit weiter zu belasten. Beim Start wird der geschätzte Tagesverbrauch geloggt und gewarnt, wenn er das Limit (1450/Tag) übersteigt.
+- Robustere Authentifizierung: OAuth-Code wird direkt aus dem Redirect gelesen, Refresh-Token bleibt bei der Token-Erneuerung erhalten, vorübergehende IAM-Fehler führen nicht mehr zu einem kompletten Re-Login.
+- Fehlgeschlagene Geräteerkennung wird beim nächsten Intervall wiederholt; überlappende Abfragen werden verhindert.
+- Weniger Last: Abonnement nur noch auf `*.setValue`-States, große Debug-Ausgaben werden nur bei Log-Level `debug` erzeugt.
+- Kommandos: `min = 0` und Schrittweite (`stepping`) werden übernommen, boolesche Parameter erhalten Typ `boolean`, optionale Parameter werden unterstützt, erfolgreiche Kommandos werden mit `ack` bestätigt.
+- Abhängigkeiten `retry-axios` und `qs` entfernt; Node.js `>=22`.
 
 ## Anforderungen
 
-- Node.js `>=20 <25` (Node.js 20, 22 und 24 werden von der CI-Matrix abgedeckt).
-- js-controller `>=7.0.7`.
-- admin `>=7.7.2`.
+- Node.js `>=22` (Node.js 22, 24 und 26 werden von der CI-Matrix abgedeckt).
+- js-controller `>=6.0.11`.
+- admin `>=7.6.20`.
 - Eine Viessmann Developer App mit OAuth Client ID.
 - Eine unterstützte Viessmann-Anlage bzw. ein unterstütztes Gateway/Gerät in der Viessmann Cloud.
 
@@ -52,6 +55,10 @@ Release-Schwerpunkte:
 7. Viessmann Benutzername und Passwort in den Adapter-Einstellungen eintragen.
 8. Optional Filter konfigurieren, um API-Limits zu schonen.
 
+### Umstieg vom Original-Adapter
+
+Der Fork verwendet denselben Adapternamen (`viessmannapi`). Eine bestehende Instanz kann daher einfach per GitHub-URL (siehe oben) überinstalliert werden: Einstellungen (inkl. verschlüsselter Client ID / Passwort), Objekte und Datenpunkte bleiben erhalten. Danach die Instanz neu starten. Ein Wechsel zurück ist jederzeit über `iobroker upgrade viessmannapi@<version>` aus dem offiziellen Repository möglich.
+
 ## Adapter-Konfiguration
 
 | Einstellung | Standard | Beschreibung |
@@ -65,10 +72,13 @@ Release-Schwerpunkte:
 | `devicelist` | leer | Kommagetrennte Allowlist für Device IDs. |
 | `featureFilter` | leer | Kommagetrennter Feature-Filter; Wildcard `*` wird unterstützt. |
 | `allowVirtual` | `false` | Virtuelle Geräte, z. B. Einzelraumsteuerungen, einbeziehen. |
+| `loadViaGateway` | `false` | Features aller Geräte eines Gateways mit **einer** Anfrage laden (`includeDevicesFeatures=true`). Empfohlen bei mehreren Geräten. |
 
 ## API-Limits und Empfehlungen
 
-Die Viessmann API hat Tageslimits. Konfigurieren Sie den Adapter so, dass nur benötigte Geräte und Features abgefragt werden:
+Der kostenlose Viessmann-API-Tarif erlaubt **1450 Anfragen pro 24 Stunden** (gleitendes Fenster). Jedes abgefragte Gerät kostet eine Anfrage pro Intervall – bei 5 Minuten sind das 288 pro Gerät und Tag. Der Adapter loggt beim Start den geschätzten Verbrauch und pausiert bei einem 429 bis zum gemeldeten Reset. Konfigurieren Sie den Adapter so, dass nur benötigte Geräte und Features abgefragt werden:
+
+- Bei mehreren Geräten `loadViaGateway` aktivieren (eine Anfrage pro Gateway statt pro Gerät).
 
 - Polling-Intervall nicht unnötig klein setzen.
 - `devicelist` verwenden, wenn nur bestimmte Geräte relevant sind.
@@ -173,8 +183,8 @@ Viessmann Developer Portal (Client-Erstellung):
 
 - **"Cannot find clientId in the viessmann Account"**: Nach dem Erstellen eines neuen Clients bis zu **15 Minuten** warten, bis der Client in der IAM-Umgebung verfügbar ist.
 - **"Invalid redirection URI"**: Die Redirect URI muss exakt `http://localhost:4200/` sein — inklusive **Trailing Slash**.
-- **`429 Too Many Requests`**: Viessmann-Tageslimit erreicht; Rücksetzung erfolgt täglich um **02:00 UTC**. Polling über `interval` und `eventInterval` erhöhen und die Abfrage mit `devicelist`/`featureFilter` eingrenzen.
-- **Token-Refresh schlägt wiederholt fehl**: Der Adapter plant automatisch nach **1 Minute** einen vollständigen Re-Login (`scheduleRelogin` in `lib/auth.js`).
+- **`Viessmann API rate limit reached ... Pausing requests until ...`**: Ratenlimit erreicht. Der Adapter pausiert bis zum angegebenen Zeitpunkt automatisch. Dauerhaft: `interval` erhöhen, `loadViaGateway` aktivieren und die Abfrage mit `devicelist`/`featureFilter` eingrenzen.
+- **Token-Refresh schlägt wiederholt fehl**: Bei abgelehntem Refresh-Token plant der Adapter einen vollständigen Re-Login mit Backoff (1, 2, 4 … max. 30 Minuten); bei Netzwerk-/Serverfehlern wird nur der Refresh nach 30 Sekunden wiederholt.
 
 ## Entwicklung
 
@@ -216,21 +226,24 @@ This repository is a maintained fork of the original project. The project histor
 
 ## Current release
 
-### 2.5.1
+### 2.6.0
 
 Release highlights:
 
-- Improved authentication failure handling and token refresh behavior.
-- Clearer retry behavior for API commands.
-- Additional tests for request flows, authentication, and safe log output.
-- Updated project requirements for modern ioBroker installations.
-- Updated documentation with German and English sections.
+- Admin UI migrated to **jsonConfig** (Materialize removed), all texts in 11 languages.
+- New option **"Load all device features with one request per gateway"** (`loadViaGateway`) saves API calls for installations with several devices.
+- **Rate limit (429)**: the adapter pauses all requests until the reset time reported by Viessmann instead of hammering the limit. On start it logs the estimated daily usage and warns when it exceeds the limit (1450/day).
+- More robust authentication: the OAuth code is read directly from the redirect, the refresh token is kept across token refreshes, and transient IAM errors no longer force a full relogin.
+- A failed device discovery is retried on the next interval; overlapping polls are prevented.
+- Less load: only `*.setValue` states are subscribed, large debug output is only built at log level `debug`.
+- Commands: `min = 0` and `stepping` are honoured, boolean parameters get type `boolean`, optional parameters are supported, successful commands are acknowledged.
+- Removed the `retry-axios` and `qs` dependencies; Node.js `>=22`.
 
 ## Requirements
 
-- Node.js `>=20 <25` (Node.js 20, 22, and 24 are covered by the CI matrix).
-- js-controller `>=7.0.7`.
-- admin `>=7.7.2`.
+- Node.js `>=22` (Node.js 22, 24, and 26 are covered by the CI matrix).
+- js-controller `>=6.0.11`.
+- admin `>=7.6.20`.
 - A Viessmann Developer App with an OAuth Client ID.
 - A supported Viessmann installation or gateway/device connected to the Viessmann Cloud.
 
@@ -247,6 +260,10 @@ Release highlights:
 7. Enter your Viessmann username and password in the adapter settings.
 8. Optionally configure filters to reduce API usage.
 
+### Switching from the original adapter
+
+This fork keeps the adapter name (`viessmannapi`), so an existing instance can simply be overwritten by installing from the GitHub URL above: settings (including the encrypted client ID / password), objects and states are kept. Restart the instance afterwards. You can switch back at any time with `iobroker upgrade viessmannapi@<version>` from the official repository.
+
 ## Adapter configuration
 
 | Setting | Default | Description |
@@ -260,10 +277,13 @@ Release highlights:
 | `devicelist` | empty | Comma-separated allowlist for device IDs. |
 | `featureFilter` | empty | Comma-separated feature filter; wildcard `*` is supported. |
 | `allowVirtual` | `false` | Include virtual devices, such as room controls. |
+| `loadViaGateway` | `false` | Load the features of all devices of a gateway with **one** request (`includeDevicesFeatures=true`). Recommended for several devices. |
 
 ## API limits and recommendations
 
-The Viessmann API has daily limits. Configure the adapter to poll only the devices and features you need:
+The free Viessmann API plan allows **1450 requests per 24 hours** (sliding window). Every polled device costs one request per interval, which is 288 per device and day at 5 minutes. The adapter logs its estimated usage on start and pauses until the reported reset after a 429. Configure the adapter to poll only the devices and features you need:
+
+- Enable `loadViaGateway` for several devices (one request per gateway instead of per device).
 
 - Do not set polling intervals lower than necessary.
 - Use `devicelist` when only selected devices are relevant.
@@ -368,8 +388,8 @@ Viessmann Developer Portal (client creation):
 
 - **"Cannot find clientId in the viessmann Account"**: Wait up to **15 minutes** after creating a new client before it is propagated in IAM.
 - **"Invalid redirection URI"**: The redirect URI must be exactly `http://localhost:4200/` with the **trailing slash**.
-- **`429 Too Many Requests`**: The Viessmann daily rate limit was reached; it resets daily at **02:00 UTC**. Increase `interval`/`eventInterval` and narrow requests via `devicelist`/`featureFilter`.
-- **Token refresh keeps failing**: The adapter automatically falls back to a full re-login after **1 minute** (`scheduleRelogin` in `lib/auth.js`).
+- **`Viessmann API rate limit reached ... Pausing requests until ...`**: The rate limit was reached. The adapter pauses automatically until the given time. Long term: increase `interval`, enable `loadViaGateway`, and narrow requests via `devicelist`/`featureFilter`.
+- **Token refresh keeps failing**: When the refresh token is rejected the adapter schedules a full relogin with backoff (1, 2, 4 … max. 30 minutes); on network/server errors only the refresh is retried after 30 seconds.
 
 ## Development
 
@@ -391,6 +411,26 @@ Important scripts:
 | `npm run test` | Run `test:js` and `test:package`. |
 
 ## Changelog
+
+<!--
+    Placeholder for the next version (at the beginning of the line):
+    ### **WORK IN PROGRESS**
+-->
+
+### 2.6.0 (2026-10-06)
+
+- (riessfa) Admin UI migrated from Materialize to jsonConfig with translations for all 11 ioBroker languages.
+- (riessfa) New option `loadViaGateway`: one request per gateway via `includeDevicesFeatures=true` instead of one per device.
+- (riessfa) HTTP 429: all requests are paused until `extendedPayload.limitReset`; the estimated daily API usage is logged on start with a warning above the free-plan limits.
+- (riessfa) Login reads the authorization code from the 302 `Location` header (`maxRedirects: 0`) instead of an axios-internal field, and no longer breaks when something listens on `localhost:4200`.
+- (riessfa) Token refresh keeps the refresh token when the IAM omits it, retries transient refresh failures instead of forcing a relogin, and 401 responses no longer cancel a pending relogin backoff.
+- (riessfa) Device discovery failures (e.g. 429/5xx at startup) are retried on the next interval instead of leaving the adapter without devices until restart; gateways missing from the response no longer crash discovery; if all gateways are offline they are used anyway.
+- (riessfa) Overlapping polls are skipped, requests stop as soon as a rate limit is hit, in-flight requests are aborted on unload, and all timers are adapter-managed (`this.setTimeout`/`this.setInterval`).
+- (riessfa) Performance: only `*.setValue` states are subscribed, device/feature filters are compiled once, large debug strings are only built at debug level, legacy logbook cleanup uses an object view.
+- (riessfa) Commands: `min: 0` was ignored and is now enforced, `stepping` becomes `common.step`, boolean parameters get type `boolean`/role `switch`, optional parameters (`required: false`) are supported, setValue objects are updated when constraints change, and successful commands are acknowledged (`ack: true`).
+- (riessfa) Object tree fixes: keys containing dots no longer write `undefined`, schedule `entries.value` states use the valid type `string` (role `json`) instead of the invalid `json`, forbidden characters in IDs are replaced.
+- (riessfa) Removed the `retry-axios` and `qs` dependencies and the unused `lib/tools.js`; removed the upstream Sentry DSN so fork errors are not reported to the original author's project.
+- (riessfa) Tooling: Node.js `>=22`, js-controller `>=6.0.11`, admin `>=7.6.20`, `@iobroker/eslint-config` + Prettier, `@iobroker/testing` 6, CI matrix Node 22/24/26, io-package `tier`, `licenseInformation` and `adminUI`.
 
 ### 2.5.2 (2026-07-03)
 

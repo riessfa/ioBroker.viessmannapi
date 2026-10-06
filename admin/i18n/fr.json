@@ -1,0 +1,19 @@
+{
+  "hdrAccount": "Compte Viessmann",
+  "setupHint": "Créez un client dans le portail développeur Viessmann : nom \"iobroker\", Google reCAPTCHA désactivé, URI de redirection http://localhost:4200/ . Saisissez ensuite ci-dessous le Client ID et vos identifiants ViCare.",
+  "openPortal": "Ouvrir le portail développeur Viessmann",
+  "Viessmannapi Client ID": "Client ID",
+  "Viessmannapi Username": "Nom d'utilisateur (e-mail)",
+  "Viessmannapi Password": "Mot de passe",
+  "hdrPolling": "Interrogation",
+  "Update device status (in minutes).": "Mettre à jour l'état de l'appareil (en minutes)",
+  "Update gateway events (in minutes).": "Mettre à jour les événements de la passerelle (en minutes)",
+  "rateLimitHint": "L'offre gratuite de l'API Viessmann autorise 1450 requêtes par jour. Chaque appareil interrogé coûte une requête par intervalle (ou une par passerelle avec l'option ci-dessous).",
+  "loadViaGateway": "Charger les fonctions de tous les appareils avec une requête par passerelle",
+  "loadViaGatewayHelp": "Économise des requêtes API pour les installations avec plusieurs appareils",
+  "hdrFilter": "Filtre",
+  "Allowlist of IDs which allow to update to prevent rate limit with ViCare Einzelraumsteuerung. Example: 0, HeatDemandControl": "Liste des appareils autorisés (ID séparés par des virgules, vide = tous). Exemple : 0, HeatDemandControl",
+  "Feature filter (comma-separated). Use * as wildcard. Example: heating.boiler.*,heating.burner.*": "Filtre de fonctions (séparées par des virgules, * comme joker). Exemple : heating.boiler.*,heating.burner.*",
+  "Allow update of virtual devices like Room Controls Devices.": "Interroger les appareils virtuels (p. ex. régulation par pièce)",
+  "Index of which gateway shall be used.": "Index de la passerelle à utiliser"
+}

@@ -23,21 +23,23 @@ main.js                   Entry point. Class Viessmannapi extends utils.Adapter.
 lib/extractKeys.js        Dynamic mapping of Viessmann API JSON responses to
                           ioBroker object/state trees. Auto-creates channels,
                           states, and writable setValue objects from API metadata.
-lib/tools.js              Utility helpers (isObject, isArray, translateText).
+lib/auth.js               OAuth PKCE login, token refresh, relogin backoff.
+lib/apiClient.js          axios instance (timeout, abort signal), base URLs, command retry helper.
+lib/filters.js            Device allowlist / feature filter parsing.
+lib/safeLog.js            Redaction helpers for logs.
 ```
 
 ### Admin UI
 
 ```
-admin/index_m.html        Materialize CSS configuration UI for adapter instances.
-admin/words.js            i18n translation strings (en, de, ru, pt, nl, fr, it, es, pl, uk, zh-cn).
-admin/style.css           Admin UI styles.
+admin/jsonConfig.json     jsonConfig instance settings UI (i18n: true).
+admin/i18n/<lang>.json    Translations (en, de, ru, pt, nl, fr, it, es, pl, uk, zh-cn).
 ```
 
 ### Tests
 
 ```
-main.test.js              Primary tests (Mocha + Chai + Sinon): retry-axios
+main.test.js              Primary tests (Mocha + Chai):
                           interceptor, extractKeys unit tests, auth timer handling,
                           sensitive-data log redaction.
 test/unit.js              @iobroker/testing unit test harness.
@@ -54,17 +56,18 @@ io-package.json           ioBroker adapter metadata, native config defaults, Sen
 package.json              npm metadata, scripts, dependencies.
 tsconfig.json             Root TypeScript config for editor support and type checking.
 tsconfig.check.json       Extends tsconfig.json for CI type checking.
-eslint.config.cjs         ESLint flat config (eslint:recommended + custom rules).
-.prettierrc.js            Prettier config.
+eslint.config.mjs         ESLint flat config based on @iobroker/eslint-config.
+prettier.config.mjs       Prettier config from @iobroker/eslint-config.
 ```
 
 ### CI
 
 ```
-.github/workflows/test.yml
+.github/workflows/test-and-release.yml
   - check-and-lint: ESLint + TypeScript checking + package validation
   - dependency-audit: npm audit on production dependencies
-  - adapter-tests: matrix of Node 20/22/24 x Ubuntu/Windows/macOS
+  - adapter-tests: matrix of Node 22/24/26 x Ubuntu/Windows/macOS
+  - github-release: creates a GitHub release for v* tags
 ```
 
 No deploy/release job: this fork cannot publish to npm because the
@@ -78,7 +81,7 @@ cd ioBroker.viessmannapi
 npm ci
 ```
 
-- **Node.js >=20 <25** required (see `engines` in package.json); CI covers Node.js 20, 22, and 24.
+- **Node.js >=22** required (see `engines` in package.json); CI covers Node.js 22, 24, and 26.
 - No build step — JavaScript source runs directly
 - TypeScript is used only for type checking, not compilation
 
@@ -88,9 +91,8 @@ npm ci
 | -------------------------- | --------------------------------------------------------- |
 | `npm run lint`             | ESLint with flat config                                   |
 | `npm run check`            | TypeScript type checking (`tsc --noEmit`)                 |
-| `npm run test:js`          | Mocha: main.test.js (retry, extractKeys, auth, redaction) |
+| `npm run test:js`          | Mocha: main.test.js (auth, polling, commands, extractKeys) |
 | `npm run test:package`     | @iobroker/testing: package structure validation           |
-| `npm run test:unit`        | @iobroker/testing: adapter unit tests                     |
 | `npm run test:integration` | @iobroker/testing: adapter integration tests              |
 | `npm run test`             | Runs `test:js` then `test:package`                        |
 
@@ -99,31 +101,22 @@ npm ci
 ## Code Conventions and Style
 
 ### Formatting (Prettier)
-- 2-space indent, no tabs
-- Single quotes, semicolons always
-- 120-character line width
-- Trailing commas (`all`)
-- LF line endings
+- ioBroker Prettier config: 4-space indent, single quotes, semicolons, 120-character lines, LF
 
 ### Linting (ESLint)
-- `eslint:recommended` base
-- `no-var` — use `const` / `let` only
-- `prefer-const` enforced
-- Unused variables error (rest siblings ignored, `_`-prefixed args ignored)
-- No trailing spaces
-- Single quotes (with `avoidEscape` and `allowTemplateLiterals`)
+- `@iobroker/eslint-config` (includes Prettier and JSDoc rules); JSDoc description rules are relaxed in `eslint.config.mjs`
 
 ### Type Checking (TypeScript)
-- `strict: true` with `noImplicitAny: false`
+- `tsconfig.check.json` (used by `npm run check`) runs with `strict: false`
 - Types via JSDoc annotations (`@param {string}`, `@returns {Promise<void>}`)
-- Target: ES2018, Module: CommonJS
+- Target: ES2022, Module: CommonJS
 
 ### General Conventions
 - CommonJS modules (`require` / `module.exports`), not ES modules
 - `'use strict';` at top of every JS file
 - Prefer `async/await` over raw `.then()` chains
-- Sensitive data (tokens, passwords, client IDs) must never appear in logs — use `sanitizeForLog()` / `stringifyForLog()` / `logAxiosError()` from `main.js`
-- `SENSITIVE_LOG_KEYS` set in `main.js` defines which fields get redacted: `authorization`, `access_token`, `refresh_token`, `client_id`, `password`, `code`
+- Sensitive data (tokens, passwords, client IDs) must never appear in logs — use `sanitizeForLog()` / `stringifyForLog()` from `lib/safeLog.js` and `logAxiosError()` from `main.js`
+- `SENSITIVE_LOG_KEYS` set in `lib/safeLog.js` defines which fields get redacted: `authorization`, `access_token`, `refresh_token`, `client_id`, `password`, `code`
 
 ## ioBroker Adapter Conventions
 
@@ -142,6 +135,7 @@ npm ci
 - **`onReady()`** — DB connected and config loaded. Perform login, start polling.
 - **`onStateChange(id, state)`** — Subscribed state changed. If `!state.ack`, it's a user command to process.
 - **`onUnload(callback)`** — Shutdown. **Must** clear ALL timers, intervals, connections and call `callback()`.
+- Use adapter-managed timers (`this.setTimeout` / `this.setInterval`), never the global ones.
 
 ### State Roles (used in `extractKeys.js`)
 - `indicator` — read-only boolean
@@ -168,43 +162,47 @@ npm ci
 | `devicelist`    | string  | `""`    | Comma-separated device ID allowlist                    |
 | `featureFilter` | string  | `""`    | Comma-separated feature path filter (wildcard `*` supported) |
 | `allowVirtual`  | boolean | `false` | Include virtual devices (e.g. room controls)           |
+| `loadViaGateway` | boolean | `false` | One request per gateway (`includeDevicesFeatures=true`) |
 
 ## Viessmann API Integration Details
 
 ### Authentication (OAuth 2.0 PKCE)
 1. Generate 64-char random hex code verifier, SHA-256 hash as base64url code challenge
 2. `GET /idp/v3/authorize` with Basic auth (username:password), code challenge, scope `IoT User offline_access`, redirect URI `http://localhost:4200/`
-3. Extract authorization code from redirect URL
+3. Read the authorization code from the 302 `Location` header (`maxRedirects: 0`)
 4. `POST /idp/v3/token` to exchange code for access + refresh tokens
 - IAM base: `https://iam.viessmann-climatesolutions.com`
 
 ### Token Refresh
 - Scheduled `(expires_in - 100) * 1000` ms before expiry
-- On 401 during polling: retry refresh in 30s
-- On refresh failure: full re-login in 60s
+- Refresh response is merged into the session (refresh token kept if not returned)
+- On 401 during polling: retry refresh in 30s (unless a relogin is already pending)
+- On refresh network/5xx failure: retry refresh in 30s
+- On rejected refresh token: session cleared, full re-login with backoff 60s … 30min
 - `clearAuthTimers()` prevents timer accumulation on re-scheduling
 
 ### API Endpoints
 - **Base:** `https://api.viessmann-climatesolutions.com`
 - **Installations:** `GET /iot/v2/equipment/installations?includeGateways=true`
 - **Features:** `GET /iot/v2/features/installations/{id}/gateways/{serial}/devices/{deviceId}/features`
+- **Gateway bulk features (`loadViaGateway`):** `GET /iot/v2/features/installations/{id}/gateways/{serial}/features?includeDevicesFeatures=true`, split per device by `/devices/{deviceId}/` in each feature `uri`
 - **Events:** `GET /iot/v2/events-history/installations/{id}/events`
 - **Commands:** `POST` to the URI stored in the feature's `.uri` state
 
 ### Rate Limits
-- **1450 calls per 24 hours** (free tier), **3000** (advanced tier)
-- Resets daily at **02:00 UTC**
-- HTTP 429 response when exceeded — adapter logs warning and continues with stale data
+- **1450 calls per 24 hours** (free Basic plan, sliding window); keep below 120 per 10 minutes
+- HTTP 429 body carries `extendedPayload.limitReset` (epoch ms) — the adapter pauses all API requests until then (fallback 10 min)
+- Estimated daily usage is logged after discovery with a warning above the limits
 - Mitigations: configurable polling interval, feature filter with wildcards, device allowlist
 
 ### Command Dispatch (`onStateChange`)
-- Only processes states whose path contains `.setValue`
+- Only `*.setValue` states are subscribed; `ack: true` writes are ignored
 - Reads the command URI from the sibling `.uri` state
 - Reads parameter metadata from `.setValue` object's `common.param`
 - Single param: sends `{ paramName: value }`
 - Multi param: expects JSON string input, sends parsed object
-- POST retry: 5 retries, 5s static backoff, only on 500-599 status, POST method only
-- After successful command: polls updated features after 10s delay
+- POST retry via `requestWithRetry`: 5 retries, 5s static delay, only on 500-599
+- Successful command: setValue is acknowledged (`ack: true`), features are refreshed after 10s
 
 ### Feature Filtering
 - `featureFilter` config accepts comma-separated patterns
@@ -218,7 +216,7 @@ npm ci
 - Recursively walks any JSON structure and creates matching ioBroker object hierarchy
 - Arrays: indexed with zero-padded numbers (`01`, `02`, ...) or use element's `id`/`name`/`feature` field as path segment
 - `forceIndex: true` disables smart naming — uses numeric indices (used for events)
-- When `isExecutable: true` found: creates a writable `setValue` state with param constraints (min/max/enum) from API metadata
+- When `isExecutable` is found: creates/extends a writable `setValue` state with param constraints (min/max/stepping/enum, type number/boolean, `required`) from API metadata
 - JSON strings auto-parsed and recursively extracted
 - Objects cached in `alreadyCreatedObjects` map to skip redundant `setObjectNotExistsAsync` calls
 - `json-bigint` used to safely parse responses with large numeric IDs
@@ -231,15 +229,14 @@ npm ci
 - `logAxiosError()` — consistent redacted error logging for all HTTP failures
 
 ### Retry Strategy
-- `retry-axios` interceptor attached at construction, default retries disabled (`retry: 0`)
-- Only command POSTs configure per-request retries: 5 retries, 5s static backoff, 500-599 only
-- GET requests never retry
-- Non-command POSTs (token requests) use default `retry: 0`
+- No retry library; only command POSTs use `requestWithRetry` (5 retries, 5s, 500-599 only)
+- Polling GETs are not retried; the next interval tries again
 
 ### Timer Management
-- `clearAuthTimers()` — clears `refreshTokenTimeout`, `refreshTokenInterval`, `reLoginTimeout`
+- `clearAuthTimers()` — clears `refreshTokenTimeout`, `reLoginTimeout`
 - `clearPollingTimers()` — clears `updateInterval`, `eventInterval`
-- `onUnload()` — calls both, also detaches retry interceptor
+- `runPollingTask()` — skips a poll while the previous one is still running
+- `onUnload()` — calls both and aborts in-flight requests via `AbortController`
 - Auth timers always cleared before scheduling new ones to prevent accumulation
 
 ## Developer Resources
@@ -263,6 +260,6 @@ npm ci
 - [Viessmann API Community Forum](https://www.viessmann-community.com/t5/The-Viessmann-API/bd-p/dev-viessmann-api)
 
 ### Platform Requirements
-- Node.js >=20 <25
-- js-controller >= 7.0.7
-- admin >= 7.7.2
+- Node.js >=22
+- js-controller >= 6.0.11
+- admin >= 7.6.20

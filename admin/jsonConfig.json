@@ -1,0 +1,163 @@
+{
+  "i18n": true,
+  "type": "panel",
+  "items": {
+    "hdrAccount": {
+      "type": "header",
+      "text": "hdrAccount",
+      "size": 2
+    },
+    "setupHint": {
+      "type": "staticText",
+      "text": "setupHint",
+      "xs": 12,
+      "sm": 12,
+      "md": 12,
+      "lg": 12,
+      "xl": 12
+    },
+    "portalLink": {
+      "type": "staticLink",
+      "label": "openPortal",
+      "href": "https://app.developer.viessmann-climatesolutions.com/",
+      "button": true,
+      "icon": "info",
+      "newLine": true,
+      "xs": 12,
+      "sm": 12,
+      "md": 6,
+      "lg": 4,
+      "xl": 4
+    },
+    "client_id": {
+      "type": "password",
+      "label": "Viessmannapi Client ID",
+      "visible": true,
+      "newLine": true,
+      "xs": 12,
+      "sm": 12,
+      "md": 6,
+      "lg": 4,
+      "xl": 4
+    },
+    "username": {
+      "type": "text",
+      "label": "Viessmannapi Username",
+      "trim": true,
+      "newLine": true,
+      "xs": 12,
+      "sm": 12,
+      "md": 6,
+      "lg": 4,
+      "xl": 4
+    },
+    "password": {
+      "type": "password",
+      "label": "Viessmannapi Password",
+      "visible": true,
+      "xs": 12,
+      "sm": 12,
+      "md": 6,
+      "lg": 4,
+      "xl": 4
+    },
+    "hdrPolling": {
+      "type": "header",
+      "text": "hdrPolling",
+      "size": 2
+    },
+    "rateLimitHint": {
+      "type": "staticText",
+      "text": "rateLimitHint",
+      "xs": 12,
+      "sm": 12,
+      "md": 12,
+      "lg": 12,
+      "xl": 12
+    },
+    "interval": {
+      "type": "number",
+      "label": "Update device status (in minutes).",
+      "min": 0.5,
+      "max": 44640,
+      "step": 0.5,
+      "unit": "min",
+      "newLine": true,
+      "xs": 12,
+      "sm": 12,
+      "md": 6,
+      "lg": 4,
+      "xl": 4
+    },
+    "eventInterval": {
+      "type": "number",
+      "label": "Update gateway events (in minutes).",
+      "min": 0.5,
+      "max": 44640,
+      "step": 0.5,
+      "unit": "min",
+      "xs": 12,
+      "sm": 12,
+      "md": 6,
+      "lg": 4,
+      "xl": 4
+    },
+    "loadViaGateway": {
+      "type": "checkbox",
+      "label": "loadViaGateway",
+      "help": "loadViaGatewayHelp",
+      "newLine": true,
+      "xs": 12,
+      "sm": 12,
+      "md": 12,
+      "lg": 12,
+      "xl": 12
+    },
+    "hdrFilter": {
+      "type": "header",
+      "text": "hdrFilter",
+      "size": 2
+    },
+    "devicelist": {
+      "type": "text",
+      "label": "Allowlist of IDs which allow to update to prevent rate limit with ViCare Einzelraumsteuerung. Example: 0, HeatDemandControl",
+      "xs": 12,
+      "sm": 12,
+      "md": 12,
+      "lg": 8,
+      "xl": 8
+    },
+    "featureFilter": {
+      "type": "text",
+      "label": "Feature filter (comma-separated). Use * as wildcard. Example: heating.boiler.*,heating.burner.*",
+      "newLine": true,
+      "xs": 12,
+      "sm": 12,
+      "md": 12,
+      "lg": 8,
+      "xl": 8
+    },
+    "allowVirtual": {
+      "type": "checkbox",
+      "label": "Allow update of virtual devices like Room Controls Devices.",
+      "newLine": true,
+      "xs": 12,
+      "sm": 12,
+      "md": 6,
+      "lg": 4,
+      "xl": 4
+    },
+    "gatewayIndex": {
+      "type": "number",
+      "label": "Index of which gateway shall be used.",
+      "min": 1,
+      "step": 1,
+      "newLine": true,
+      "xs": 12,
+      "sm": 12,
+      "md": 6,
+      "lg": 4,
+      "xl": 4
+    }
+  }
+}

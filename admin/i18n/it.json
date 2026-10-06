@@ -1,0 +1,19 @@
+{
+  "hdrAccount": "Account Viessmann",
+  "setupHint": "Crea un client nel portale sviluppatori Viessmann: nome \"iobroker\", Google reCAPTCHA disattivato, URI di reindirizzamento http://localhost:4200/ . Quindi inserisci sotto il Client ID e le credenziali ViCare.",
+  "openPortal": "Apri il portale sviluppatori Viessmann",
+  "Viessmannapi Client ID": "Client ID",
+  "Viessmannapi Username": "Nome utente (e-mail)",
+  "Viessmannapi Password": "Password",
+  "hdrPolling": "Polling",
+  "Update device status (in minutes).": "Aggiorna lo stato del dispositivo (in minuti)",
+  "Update gateway events (in minutes).": "Aggiorna gli eventi del gateway (in minuti)",
+  "rateLimitHint": "Il piano gratuito dell'API Viessmann consente 1450 richieste al giorno. Ogni dispositivo interrogato costa una richiesta per intervallo (o una per gateway con l'opzione sotto).",
+  "loadViaGateway": "Carica le funzioni di tutti i dispositivi con una richiesta per gateway",
+  "loadViaGatewayHelp": "Risparmia richieste API per impianti con più dispositivi",
+  "hdrFilter": "Filtro",
+  "Allowlist of IDs which allow to update to prevent rate limit with ViCare Einzelraumsteuerung. Example: 0, HeatDemandControl": "Elenco dispositivi consentiti (ID separati da virgola, vuoto = tutti). Esempio: 0, HeatDemandControl",
+  "Feature filter (comma-separated). Use * as wildcard. Example: heating.boiler.*,heating.burner.*": "Filtro funzioni (separate da virgola, * come carattere jolly). Esempio: heating.boiler.*,heating.burner.*",
+  "Allow update of virtual devices like Room Controls Devices.": "Interroga dispositivi virtuali (es. controllo per stanza)",
+  "Index of which gateway shall be used.": "Indice del gateway da utilizzare"
+}

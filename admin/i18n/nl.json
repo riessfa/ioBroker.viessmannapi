@@ -1,0 +1,19 @@
+{
+  "hdrAccount": "Viessmann-account",
+  "setupHint": "Maak een client aan in het Viessmann-ontwikkelaarsportaal: naam \"iobroker\", Google reCAPTCHA uitgeschakeld, redirect-URI http://localhost:4200/ . Vul daarna hieronder de client-ID en je ViCare-login in.",
+  "openPortal": "Viessmann-ontwikkelaarsportaal openen",
+  "Viessmannapi Client ID": "Client-ID",
+  "Viessmannapi Username": "Gebruikersnaam (e-mail)",
+  "Viessmannapi Password": "Wachtwoord",
+  "hdrPolling": "Polling",
+  "Update device status (in minutes).": "Apparaatstatus bijwerken (in minuten)",
+  "Update gateway events (in minutes).": "Gateway-gebeurtenissen bijwerken (in minuten)",
+  "rateLimitHint": "Het gratis Viessmann API-abonnement staat 1450 verzoeken per dag toe. Elk gepold apparaat kost één verzoek per interval (of één per gateway met de optie hieronder).",
+  "loadViaGateway": "Alle apparaatfuncties laden met één verzoek per gateway",
+  "loadViaGatewayHelp": "Bespaart API-verzoeken bij installaties met meerdere apparaten",
+  "hdrFilter": "Filter",
+  "Allowlist of IDs which allow to update to prevent rate limit with ViCare Einzelraumsteuerung. Example: 0, HeatDemandControl": "Toegestane apparaten (ID's gescheiden door komma's, leeg = alle). Voorbeeld: 0, HeatDemandControl",
+  "Feature filter (comma-separated). Use * as wildcard. Example: heating.boiler.*,heating.burner.*": "Functiefilter (gescheiden door komma's, * als jokerteken). Voorbeeld: heating.boiler.*,heating.burner.*",
+  "Allow update of virtual devices like Room Controls Devices.": "Virtuele apparaten pollen (bijv. ruimteregeling)",
+  "Index of which gateway shall be used.": "Index van de te gebruiken gateway"
+}
