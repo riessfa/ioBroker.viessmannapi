@@ -1,0 +1,19 @@
+{
+  "hdrAccount": "Viessmann 账户",
+  "setupHint": "在 Viessmann 开发者门户中创建客户端：名称 \"iobroker\"，禁用 Google reCAPTCHA，重定向 URI http://localhost:4200/ 。然后在下方输入 Client ID 和 ViCare 登录信息。",
+  "openPortal": "打开 Viessmann 开发者门户",
+  "Viessmannapi Client ID": "Client ID",
+  "Viessmannapi Username": "用户名（电子邮件）",
+  "Viessmannapi Password": "密码",
+  "hdrPolling": "轮询",
+  "Update device status (in minutes).": "更新设备状态（分钟）",
+  "Update gateway events (in minutes).": "更新网关事件（分钟）",
+  "rateLimitHint": "Viessmann API 免费套餐每天允许 1450 次请求。每个被轮询的设备每个周期消耗一次请求（启用下方选项时每个网关一次）。",
+  "loadViaGateway": "每个网关一次请求加载所有设备功能",
+  "loadViaGatewayHelp": "为多设备安装节省 API 请求",
+  "hdrFilter": "过滤",
+  "Allowlist of IDs which allow to update to prevent rate limit with ViCare Einzelraumsteuerung. Example: 0, HeatDemandControl": "设备白名单（逗号分隔的设备 ID，留空 = 全部）。示例：0, HeatDemandControl",
+  "Feature filter (comma-separated). Use * as wildcard. Example: heating.boiler.*,heating.burner.*": "功能过滤（逗号分隔，* 为通配符）。示例：heating.boiler.*,heating.burner.*",
+  "Allow update of virtual devices like Room Controls Devices.": "轮询虚拟设备（例如单房间控制设备）",
+  "Index of which gateway shall be used.": "要使用的网关索引"
+}

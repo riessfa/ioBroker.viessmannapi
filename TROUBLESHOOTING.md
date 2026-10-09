@@ -14,6 +14,8 @@
 
 ## HTTP 429 rate limit warnings
 
+- The adapter pauses requests until the reset time Viessmann reports and logs it.
+- Enable `loadViaGateway` when several devices are polled (one request per gateway).
 - Increase the feature polling interval.
 - Use `featureFilter` to restrict paths.
 - Use `devicelist` to limit processed devices.
@@ -22,4 +24,5 @@
 
 - Commands must be written to `.setValue` states (`ack: false`).
 - Confirm the corresponding `.uri` state exists.
+- A successful command acknowledges the `setValue` state (`ack: true`); otherwise check the warning in the log.
 - For multi-parameter commands, send valid JSON.

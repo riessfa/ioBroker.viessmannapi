@@ -1,0 +1,19 @@
+{
+  "hdrAccount": "Учётная запись Viessmann",
+  "setupHint": "Создайте клиента на портале разработчиков Viessmann: имя \"iobroker\", Google reCAPTCHA отключена, URI перенаправления http://localhost:4200/ . Затем введите ниже Client ID и данные входа ViCare.",
+  "openPortal": "Открыть портал разработчиков Viessmann",
+  "Viessmannapi Client ID": "Client ID",
+  "Viessmannapi Username": "Имя пользователя (e-mail)",
+  "Viessmannapi Password": "Пароль",
+  "hdrPolling": "Опрос",
+  "Update device status (in minutes).": "Обновлять статус устройства (в минутах)",
+  "Update gateway events (in minutes).": "Обновлять события шлюза (в минутах)",
+  "rateLimitHint": "Бесплатный тариф Viessmann API допускает 1450 запросов в день. Каждое опрашиваемое устройство стоит один запрос за интервал (или один на шлюз с опцией ниже).",
+  "loadViaGateway": "Загружать функции всех устройств одним запросом на шлюз",
+  "loadViaGatewayHelp": "Экономит запросы API для установок с несколькими устройствами",
+  "hdrFilter": "Фильтр",
+  "Allowlist of IDs which allow to update to prevent rate limit with ViCare Einzelraumsteuerung. Example: 0, HeatDemandControl": "Список разрешённых устройств (ID через запятую, пусто = все). Пример: 0, HeatDemandControl",
+  "Feature filter (comma-separated). Use * as wildcard. Example: heating.boiler.*,heating.burner.*": "Фильтр функций (через запятую, * как шаблон). Пример: heating.boiler.*,heating.burner.*",
+  "Allow update of virtual devices like Room Controls Devices.": "Опрашивать виртуальные устройства (например, комнатное управление)",
+  "Index of which gateway shall be used.": "Индекс используемого шлюза"
+}

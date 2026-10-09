@@ -1,0 +1,19 @@
+{
+  "hdrAccount": "Viessmann-Konto",
+  "setupHint": "Lege im Viessmann-Entwicklerportal einen Client an: Name \"iobroker\", Google reCAPTCHA deaktiviert, Redirect-URI http://localhost:4200/ . Trage danach die Client-ID und deine ViCare-Zugangsdaten unten ein.",
+  "openPortal": "Viessmann-Entwicklerportal öffnen",
+  "Viessmannapi Client ID": "Client-ID",
+  "Viessmannapi Username": "Benutzername (E-Mail)",
+  "Viessmannapi Password": "Passwort",
+  "hdrPolling": "Abfrage",
+  "Update device status (in minutes).": "Gerätestatus aktualisieren (in Minuten)",
+  "Update gateway events (in minutes).": "Gateway-Ereignisse aktualisieren (in Minuten)",
+  "rateLimitHint": "Der kostenlose Viessmann-API-Tarif erlaubt 1450 Anfragen pro Tag. Jedes abgefragte Gerät kostet eine Anfrage pro Intervall (bzw. eine pro Gateway mit der Option unten).",
+  "loadViaGateway": "Alle Geräte-Features mit einer Anfrage pro Gateway laden",
+  "loadViaGatewayHelp": "Spart API-Anfragen bei Anlagen mit mehreren Geräten",
+  "hdrFilter": "Filter",
+  "Allowlist of IDs which allow to update to prevent rate limit with ViCare Einzelraumsteuerung. Example: 0, HeatDemandControl": "Geräte-Allowlist (kommagetrennte Geräte-IDs, leer = alle). Beispiel: 0, HeatDemandControl",
+  "Feature filter (comma-separated). Use * as wildcard. Example: heating.boiler.*,heating.burner.*": "Feature-Filter (kommagetrennt, * als Platzhalter). Beispiel: heating.boiler.*,heating.burner.*",
+  "Allow update of virtual devices like Room Controls Devices.": "Virtuelle Geräte abfragen (z. B. Einzelraumsteuerung)",
+  "Index of which gateway shall be used.": "Index des zu verwendenden Gateways"
+}

@@ -1,8 +1,21 @@
 {
   "common": {
     "name": "viessmannapi",
-    "version": "2.5.2",
+    "version": "2.6.0",
     "news": {
+      "2.6.0": {
+        "en": "Admin UI migrated to jsonConfig, Node.js >= 22 required, optional one-request-per-gateway polling, rate limit pause until the reported reset, safer token refresh and relogin, faster polling with less debug overhead, fixed command constraints (min 0, step, boolean), removed retry-axios and qs dependencies",
+        "de": "Admin-Oberfläche auf jsonConfig umgestellt, Node.js >= 22 erforderlich, optionales Abfragen mit einer Anfrage pro Gateway, Pause bei Ratenlimit bis zum gemeldeten Reset, sicherere Token-Erneuerung und Neuanmeldung, schnelleres Polling mit weniger Debug-Aufwand, Kommando-Grenzen korrigiert (min 0, Schrittweite, boolesch), Abhängigkeiten retry-axios und qs entfernt",
+        "ru": "Интерфейс администратора переведён на jsonConfig, требуется Node.js >= 22, опциональный опрос одним запросом на шлюз, пауза при превышении лимита до указанного сброса, более надёжное обновление токена и повторный вход, ускоренный опрос, исправлены ограничения команд (min 0, шаг, boolean), удалены зависимости retry-axios и qs",
+        "pt": "Interface de administração migrada para jsonConfig, Node.js >= 22 obrigatório, consulta opcional com um pedido por gateway, pausa no limite de taxa até ao reinício indicado, renovação de token e novo login mais seguros, consulta mais rápida, restrições de comandos corrigidas (min 0, passo, booleano), dependências retry-axios e qs removidas",
+        "nl": "Admin-interface omgezet naar jsonConfig, Node.js >= 22 vereist, optioneel pollen met één verzoek per gateway, pauze bij rate limit tot de gemelde reset, veiliger token vernieuwen en opnieuw inloggen, sneller pollen, opdrachtgrenzen gecorrigeerd (min 0, stap, boolean), afhankelijkheden retry-axios en qs verwijderd",
+        "fr": "Interface d'administration migrée vers jsonConfig, Node.js >= 22 requis, interrogation optionnelle avec une requête par passerelle, pause en cas de limite de débit jusqu'à la réinitialisation indiquée, renouvellement du jeton et reconnexion plus sûrs, interrogation plus rapide, contraintes des commandes corrigées (min 0, pas, booléen), dépendances retry-axios et qs supprimées",
+        "it": "Interfaccia di amministrazione migrata a jsonConfig, Node.js >= 22 richiesto, polling opzionale con una richiesta per gateway, pausa al limite di frequenza fino al reset indicato, rinnovo del token e nuovo accesso più sicuri, polling più veloce, vincoli dei comandi corretti (min 0, passo, booleano), dipendenze retry-axios e qs rimosse",
+        "es": "Interfaz de administración migrada a jsonConfig, se requiere Node.js >= 22, sondeo opcional con una solicitud por gateway, pausa por límite de tasa hasta el reinicio indicado, renovación de token y reinicio de sesión más seguros, sondeo más rápido, restricciones de comandos corregidas (min 0, paso, booleano), dependencias retry-axios y qs eliminadas",
+        "pl": "Interfejs administratora przeniesiony na jsonConfig, wymagany Node.js >= 22, opcjonalne odpytywanie jednym żądaniem na bramkę, wstrzymanie przy limicie zapytań do zgłoszonego resetu, bezpieczniejsze odświeżanie tokenu i ponowne logowanie, szybsze odpytywanie, poprawione ograniczenia poleceń (min 0, krok, boolean), usunięte zależności retry-axios i qs",
+        "uk": "Інтерфейс адміністратора переведено на jsonConfig, потрібен Node.js >= 22, необов'язкове опитування одним запитом на шлюз, пауза при перевищенні ліміту до вказаного скидання, надійніше оновлення токена та повторний вхід, швидше опитування, виправлено обмеження команд (min 0, крок, boolean), видалено залежності retry-axios і qs",
+        "zh-cn": "管理界面迁移到 jsonConfig，需要 Node.js >= 22，可选每个网关一次请求的轮询，达到速率限制时暂停至报告的重置时间，更安全的令牌刷新和重新登录，更快的轮询，修复命令约束（最小值 0、步长、布尔值），移除 retry-axios 和 qs 依赖"
+      },
       "2.5.2": {
         "en": "Fix multi-installation polling aborts, retry failed logins with backoff, validate polling intervals, keep boolean command values, harden PKCE/token-refresh requests, and make the object cache compact-mode safe",
         "de": "Abbrüche beim Polling mehrerer Installationen behoben, fehlgeschlagene Logins mit Backoff wiederholt, Polling-Intervalle validiert, boolesche Kommandowerte beibehalten, PKCE/Token-Refresh-Anfragen gehärtet und Objekt-Cache Compact-Mode-sicher gemacht"
@@ -53,40 +66,6 @@
         "pl": "fix for new role preventing data update",
         "uk": "виправити для оновлення нових функцій",
         "zh-cn": "修正防止数据更新的新角色"
-      },
-      "2.4.2": {
-        "en": "change api host name",
-        "de": "api host name",
-        "ru": "изменить имя хоста api",
-        "pt": "alterar o nome da máquina api",
-        "nl": "api-hostnaam wijzigen",
-        "fr": "changer le nom de l'hôte api",
-        "it": "cambia nome host api",
-        "es": "cambio api nombre de host",
-        "pl": "zmienić nazwę serwera api",
-        "uk": "змінити ім'я апі",
-        "zh-cn": "更改 api 主机名称"
-      },
-      "2.4.1": {
-        "en": "Update to new viessmann api",
-        "de": "Update auf neue viessmann api",
-        "ru": "Обновление для Viessmann api",
-        "pt": "Atualização para novo viessmann api",
-        "nl": "Update naar nieuwe viessmann api",
-        "fr": "Mise à jour de la nouvelle viessmann api",
-        "it": "Aggiornamento alla nuova viessmann api",
-        "es": "Actualización a nuevo viessmann api",
-        "pl": "Aktualizacja do nowego Viessmann api",
-        "uk": "Update to new viessmann api",
-        "zh-cn": "更新到新 Viessmann api"
-      },
-      "2.4.0": {
-        "en": "Add allow list to prevent rate limit with ViCare Einzelraumsteuerung",
-        "de": "Eine Allow-Liste hinzugefügt um das Ratelimit bei Aktivierung der ViCare Einzelraumsteuerung zu verhindern"
-      },
-      "2.3.2": {
-        "en": "Fix Login flow",
-        "de": "Login Flow gefixt"
       }
     },
     "titleLang": {
@@ -99,6 +78,7 @@
       "it": "Viessmannapi",
       "es": "Viessmannapi",
       "pl": "Viessmannapi",
+      "uk": "Viessmannapi",
       "zh-cn": "Viessmannapi"
     },
     "desc": {
@@ -111,6 +91,7 @@
       "it": "Adattatore per dispositivi Viessmannapi con Vitoconnect Box",
       "es": "Adaptador para dispositivos Viessmannapi con Vitoconnect Box",
       "pl": "Adapter do urządzeń Viessmannapi z Vitoconnect Box",
+      "uk": "Адаптер для пристроїв Viessmann з Vitoconnect Box",
       "zh-cn": "带有 Vitoconnect 盒的 Viessmannapi 设备适配器"
     },
     "authors": [
@@ -120,7 +101,10 @@
     "keywords": [
       "Viessmannapi"
     ],
-    "license": "MIT",
+    "licenseInformation": {
+      "type": "free",
+      "license": "MIT"
+    },
     "platform": "Javascript/Node.js",
     "main": "main.js",
     "icon": "viessmannapi.png",
@@ -130,23 +114,21 @@
     "loglevel": "info",
     "mode": "daemon",
     "type": "climate-control",
+    "tier": 3,
     "compact": true,
     "connectionType": "cloud",
     "dataSource": "poll",
-    "materialize": true,
-    "plugins": {
-      "sentry": {
-        "dsn": "https://d5990d8661fb46988e641bca0e3d4e38@sentry.iobroker.net/147"
-      }
+    "adminUI": {
+      "config": "json"
     },
     "dependencies": [
       {
-        "js-controller": ">=7.0.7"
+        "js-controller": ">=6.0.11"
       }
     ],
     "globalDependencies": [
       {
-        "admin": ">=7.7.2"
+        "admin": ">=7.6.20"
       }
     ]
   },
@@ -167,7 +149,8 @@
     "gatewayIndex": 1,
     "devicelist": "",
     "featureFilter": "",
-    "allowVirtual": false
+    "allowVirtual": false,
+    "loadViaGateway": false
   },
   "objects": [],
   "instanceObjects": [
